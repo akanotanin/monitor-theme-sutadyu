@@ -1,0 +1,85 @@
+{
+  "name": "sutadewu",
+  "short": "sutadewu",
+  "description": "星露谷式小镇探针主题：每台服务器一只小鸡；Tab 打开探针列表，点卡片看九格信息与资源/延迟折线图。",
+  "version": "1.8.4",
+  "author": "akanotanin",
+  "url": "https://github.com/akanotanin/monitor-theme-sutadewu",
+  "config": [
+    {
+      "type": "title",
+      "label": "小镇"
+    },
+    {
+      "type": "select",
+      "key": "viewHeight",
+      "label": "镜头远近",
+      "default": "24",
+      "options": [
+        {
+          "value": "20",
+          "label": "近景（看得清小鸡）"
+        },
+        {
+          "value": "24",
+          "label": "标准"
+        },
+        {
+          "value": "30",
+          "label": "远景（看全小镇）"
+        }
+      ],
+      "help": "正交俯视镜头的高度。越小越近，越大越远。"
+    },
+    {
+      "type": "select",
+      "key": "labelMode",
+      "label": "小鸡名牌",
+      "default": "auto",
+      "options": [
+        {
+          "value": "auto",
+          "label": "智能（宽屏常驻 · 窄屏靠近）"
+        },
+        {
+          "value": "always",
+          "label": "一直常驻卡片"
+        },
+        {
+          "value": "near",
+          "label": "靠近才展开"
+        },
+        {
+          "value": "dot",
+          "label": "只显示状态点"
+        }
+      ],
+      "help": "小鸡头顶信息卡：智能档在宽屏上每只鸡常驻挂卡（状态/延迟/CPU/内存/磁盘/流量已用÷总量/实时带宽↓↑），窄屏（<700px）自动收成「靠近才展开」；走近或悬停会展开更完整的一张（含今日流量与公开备注）。"
+    },
+    {
+      "type": "boolean",
+      "key": "villagers",
+      "label": "村民与作物互动",
+      "default": true,
+      "help": "关掉之后镇子里只剩探针小鸡，聊天和采摘一起收起。"
+    },
+    {
+      "type": "title",
+      "label": "画面"
+    },
+    {
+      "type": "boolean",
+      "key": "shadows",
+      "label": "实时阴影",
+      "default": true,
+      "help": "关掉可显著提升弱显卡上的帧率。"
+    },
+    {
+      "type": "boolean",
+      "key": "lowQuality",
+      "label": "低画质启动",
+      "default": false,
+      "help": "直接按低分辨率与无阴影启动，适合核显 / 手机。"
+    }
+  ]
+}

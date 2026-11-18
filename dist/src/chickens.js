@@ -1,0 +1,366 @@
+import * as THREE from 'three';
+import { MeshBatch } from './util.js?v=1.8.4';
+import { STATUS } from './hub.js?v=1.8.4';
+import { isWalkable } from './collision.js?v=1.8.4';
+
+/* ------------------------------------------------------------------ *
+ * 探针小鸡：一只鸡 = 一台服务器
+ * 体型控制在小镇里不突兀（站高约 0.6，约玩家的 1/3）
+ * ------------------------------------------------------------------ */
+
+const PALETTES = [
+  { body: 0xf5f0e6, wing: 0xe6dfd2, tail: 0xd8cfc0 }, // 白羽
+  { body: 0xb5793a, wing: 0xa3682c, tail: 0x8a5522 }, // 黄褐
+  { body: 0x4a4740, wing: 0x3a3833, tail: 0x2e2c28 }, // 乌骨
+  { body: 0xe0b34a, wing: 0xd0a038, tail: 0xb98a2c }, // 油鸡金
+  { body: 0x9b7a5e, wing: 0x8a6a52, tail: 0x74573f }, // 麻鸡
+];
+const COMB = 0xc93434;
+const BEAK = 0xd98a2b;
+const LEG = 0xd9a441;
+const EYE = 0x2b2622;
+
+/** 小鸡的固定落脚点：分布在镇子各处，互不拥挤 */
+export const CHICKEN_SLOTS = [
+  { x: -3.2, z: -3.4, r: 1.8 }, // 广场西南草地
+  { x: -6.6, z: -2.9, r: 1.6 }, // 面包房前
+  { x: 3.4, z: -2.6, r: 1.6 }, // 蓝顶小屋旁
+  { x: -6.4, z: 6.6, r: 1.7 }, // 青瓦人家前
+  { x: -3.0, z: 9.4, r: 1.6 }, // 菜园门口
+  { x: 5.4, z: 6.6, r: 1.5 }, // 河边草地
+  { x: 12.4, z: -4.8, r: 1.5 }, // 桥东土路旁
+  { x: 19.4, z: -10.4, r: 1.6 }, // 树林边
+  { x: 12.8, z: 8.2, r: 1.6 }, // 野餐草地旁
+  { x: 20.0, z: 3.6, r: 1.4 }, // 东边林间
+];
+
+/** 两个落脚点的间距下限：离太近会连人带卡糊成一团 */
+const SLOT_MIN_GAP = 2.1;
+
+/**
+ * 按服务器数量备好落脚点：前 10 个是手工点位；超出的在**整张地图**里做
+ * 「最远点采样」——每只新鸡都落在离已有全部点位最远的候选点上，
+ * 天然铺满全图、不会挤成一圈（数量少时也一样散得开）。
+ */
+function buildSlots(count) {
+  const slots = CHICKEN_SLOTS.slice(0, Math.min(count, CHICKEN_SLOTS.length));
+  if (count <= slots.length) return slots;
+  let seed = 20261118;
+  const rand = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  const CAND = 32;                        // 每个新点位试 32 个候选，谁离大家最远选谁
+  let guard = 0;
+  while (slots.length < count && guard < 4000) {
+    guard++;
+    let best = null;
+    let bestD = -1;
+    for (let t = 0; t < CAND; t++) {
+      const x = -19 + rand() * 39;        // 全图范围（比 MAP 略收一点）
+      const z = -16 + rand() * 32;
+      if (!isWalkable(x, z, 0.85)) continue;   // 留足净空：漫游半径内别撞墙/进水
+      let dmin = Infinity;
+      for (const s of slots) {
+        const dd = Math.hypot(s.x - x, s.z - z);
+        if (dd < dmin) dmin = dd;
+      }
+      if (dmin > bestD) { bestD = dmin; best = { x, z }; }
+    }
+    if (!best) break;                     // 候选全不可走（几乎不会发生）
+    slots.push({ x: +best.x.toFixed(2), z: +best.z.toFixed(2), r: 1.0, gen: true });
+  }
+  return slots;
+}
+
+function part(batch, shade, material) {
+  const mesh = batch.build(material);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+/**
+ * 造一只小鸡（本地坐标：脚底 y=0，正面朝 +z）
+ * @returns {{ root: THREE.Group, head: THREE.Group, leftLeg: THREE.Group, rightLeg: THREE.Group,
+ *             leftWing: THREE.Mesh, rightWing: THREE.Mesh, ring: THREE.Mesh, height: number }}
+ */
+export function buildChicken(material, paletteIndex = 0, scale = 0.85) {
+  const pal = PALETTES[Math.abs(paletteIndex) % PALETTES.length];
+  const root = new THREE.Group();
+
+  // ---- 身体 ----
+  const bodyBatch = new MeshBatch();
+  bodyBatch.addBox(0, 0.33, 0, 0.44, 0.32, 0.52, pal.body); // 躯干
+  bodyBatch.addBox(0, 0.2, 0.04, 0.34, 0.14, 0.42, pal.wing); // 腹部
+  bodyBatch.addBox(0, 0.44, -0.3, 0.22, 0.26, 0.16, pal.tail, 0); // 尾羽
+  bodyBatch.addBox(0, 0.56, -0.32, 0.12, 0.12, 0.1, pal.tail, 0); // 尾尖
+  const body = part(bodyBatch, pal, material);
+  root.add(body);
+
+  // ---- 翅膀 ----
+  const wingBatch = new MeshBatch();
+  wingBatch.addBox(0, 0, 0, 0.07, 0.2, 0.3, pal.wing);
+  const wingGeo = wingBatch.buildGeometry();
+  const leftWing = new THREE.Mesh(wingGeo, material);
+  const rightWing = new THREE.Mesh(wingGeo, material);
+  leftWing.position.set(-0.235, 0.36, -0.02);
+  rightWing.position.set(0.235, 0.36, -0.02);
+  for (const w of [leftWing, rightWing]) { w.castShadow = true; w.receiveShadow = true; root.add(w); }
+
+  // ---- 头（可摆动/点头）----
+  const head = new THREE.Group();
+  head.position.set(0, 0.5, 0.24);
+  const headBatch = new MeshBatch();
+  headBatch.addBox(0, 0.11, 0.03, 0.24, 0.26, 0.24, pal.body); // 头
+  headBatch.addBox(0, 0.27, 0.0, 0.06, 0.1, 0.2, COMB); // 鸡冠
+  headBatch.addBox(0, 0.24, 0.1, 0.05, 0.06, 0.06, COMB);
+  headBatch.addBox(0, 0.06, 0.18, 0.1, 0.07, 0.13, BEAK); // 喙
+  headBatch.addBox(0, -0.01, 0.16, 0.06, 0.09, 0.05, COMB); // 肉垂
+  headBatch.addBox(-0.07, 0.14, 0.15, 0.035, 0.045, 0.03, EYE);
+  headBatch.addBox(0.07, 0.14, 0.15, 0.035, 0.045, 0.03, EYE);
+  head.add(part(headBatch, pal, material));
+  root.add(head);
+
+  // ---- 腿 ----
+  const legBatch = new MeshBatch();
+  legBatch.addBox(0, -0.09, 0, 0.055, 0.18, 0.055, LEG);
+  legBatch.addBox(0, -0.185, 0.03, 0.1, 0.05, 0.14, LEG);
+  const legGeo = legBatch.buildGeometry();
+  const leftLeg = new THREE.Group();
+  const rightLeg = new THREE.Group();
+  leftLeg.position.set(-0.1, 0.19, 0);
+  rightLeg.position.set(0.1, 0.19, 0);
+  for (const [g, leg] of [[legGeo, leftLeg], [legGeo, rightLeg]]) {
+    const m = new THREE.Mesh(g, material);
+    m.castShadow = true;
+    leg.add(m);
+    root.add(leg);
+  }
+
+  // ---- 状态光环（贴地圆圈）----
+  const ringBatch = new MeshBatch();
+  const segments = 12;
+  const r = 0.34;
+  for (let i = 0; i < segments; i++) {
+    const a0 = (i / segments) * Math.PI * 2;
+    const a1 = ((i + 1) / segments) * Math.PI * 2;
+    const mid = (a0 + a1) / 2;
+    ringBatch.addBox(
+      Math.cos(mid) * r, 0.012, Math.sin(mid) * r,
+      (Math.PI * 2 * r) / segments + 0.04, 0.02, 0.075,
+      0xffffff,
+      -mid + Math.PI / 2
+    );
+  }
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0x6fbf73, transparent: true, opacity: 0.55, depthWrite: false });
+  const ring = new THREE.Mesh(ringBatch.buildGeometry(), ringMat);
+  ring.renderOrder = 2;
+  root.add(ring);
+
+  const shadowBatch = new MeshBatch();
+  shadowBatch.addBox(0, 0.004, 0.06, 0.5, 0.01, 0.62, 0x314d46);
+  const shadow = shadowBatch.build(new THREE.MeshBasicMaterial({
+    color: 0x314d46, transparent: true, opacity: 0.16, depthWrite: false,
+  }));
+  root.add(shadow);
+
+  root.scale.setScalar(scale);
+  return { root, head, leftLeg, rightLeg, leftWing, rightWing, ring, height: 0.72 * scale };
+}
+
+/* ------------------------------------------------------------------ *
+ * 一群小鸡：每台服务器一只，会自己在窝边溜达、啄地
+ * ------------------------------------------------------------------ */
+
+export class ChickenHerd {
+  constructor(material, interactables) {
+    this.material = material;
+    this.items = [];
+    this.interactables = interactables;
+    this.group = new THREE.Group();
+    this._byId = new Map();
+    this._rng = 20261118;
+    this._slots = null;
+  }
+
+  _rand() {
+    this._rng = (this._rng * 1664525 + 1013904223) >>> 0;
+    return this._rng / 4294967296;
+  }
+
+  /** 与服务器列表同步：新来的生一只鸡，消失的收走 */
+  sync(servers) {
+    // 服务器比现有槽位多就补槽（已在场的小鸡保留原位置，不推倒重来）
+    if (!this._slots || this._slots.length < servers.length) {
+      this._slots = buildSlots(Math.max(servers.length, CHICKEN_SLOTS.length));
+    }
+    const seen = new Set();
+    servers.forEach((server, index) => {
+      seen.add(server.id);
+      let item = this._byId.get(server.id);
+      if (!item) {
+        item = this._spawn(server, index);
+        this._byId.set(server.id, item);
+        this.items.push(item);
+      }
+      item.server = server;
+      item.ring.material.color.setHex(STATUS[server.status]?.color ?? 0x9d9d92);
+      item.root.visible = true;
+    });
+    // 移除已经不存在的
+    for (const [id, item] of [...this._byId]) {
+      if (seen.has(id)) continue;
+      this._byId.delete(id);
+      const i = this.items.indexOf(item);
+      if (i >= 0) this.items.splice(i, 1);
+      this.group.remove(item.root);
+      const j = this.interactables.indexOf(item.interactable);
+      if (j >= 0) this.interactables.splice(j, 1);
+    }
+  }
+
+  _spawn(server, index) {
+    const slots = this._slots && this._slots.length ? this._slots : CHICKEN_SLOTS;
+    const slot = slots[index % slots.length];
+    let x;
+    let z;
+    if (slot.gen) {
+      // 后补的槽位本身已经散开，只做一点点抖动
+      const a = (index * 2.399963229728653) % (Math.PI * 2);
+      const d = 0.15 + (index % 3) * 0.22;
+      x = slot.x + Math.cos(a) * d;
+      z = slot.z + Math.sin(a) * d;
+    } else {
+      const angle = (index / Math.max(1, CHICKEN_SLOTS.length)) * Math.PI * 2 + 0.7;
+      const dist = 0.4 + (index % 3) * 0.35;
+      x = slot.x + Math.cos(angle) * dist;
+      z = slot.z + Math.sin(angle) * dist;
+    }
+
+    const body = buildChicken(this.material, index, 1.02 + ((index * 7) % 3) * 0.04);
+    body.root.position.set(x, 0, z);
+    body.root.rotation.y = this._rand() * Math.PI * 2;
+    this.group.add(body.root);
+
+    const interactable = {
+      kind: 'server',
+      x, z,
+      anchorY: 1.02,
+      radius: 1.7,
+      prompt: `查看 ${server.name}`,
+      available: () => true,
+      interact: () => ({ kind: 'server', server: item.server }),
+    };
+
+    const item = {
+      server,
+      id: server.id,
+      root: body.root,
+      head: body.head,
+      leftLeg: body.leftLeg,
+      rightLeg: body.rightLeg,
+      leftWing: body.leftWing,
+      rightWing: body.rightWing,
+      ring: body.ring,
+      height: body.height,
+      home: { x, z },
+      radius: slot.r,
+      pos: { x, z },
+      target: { x, z },
+      facing: body.root.rotation.y,
+      phase: this._rand() * Math.PI * 2,
+      wait: this._rand() * 2,
+      peck: 0,
+      speed: 0.5 + this._rand() * 0.35,
+      interactable,
+    };
+    this.interactables.push(interactable);
+    return item;
+  }
+
+  /** 高亮/选中 */
+  setHighlight(item, on) {
+    if (!item) return;
+    item.ring.material.opacity = on ? 0.95 : 0.55;
+    item.ring.scale.setScalar(on ? 1.12 : 1);
+  }
+
+  update(dt, time, playerPos) {
+    for (const c of this.items) {
+      const offline = c.server.status === 'offline' || c.server.status === 'unknown';
+      const busy = c.server.status === 'warn';
+      const speed = offline ? 0 : c.speed * (busy ? 1.35 : 1);
+
+      if (!offline) {
+        // 选一个落脚点（挑可走的位置，别漫游进墙里/河里）
+        c.wait -= dt;
+        if (c.wait <= 0) {
+          for (let tries = 0; tries < 4; tries++) {
+            const a = this._rand() * Math.PI * 2;
+            const r = 0.3 + this._rand() * c.radius;
+            c.target.x = c.home.x + Math.cos(a) * r;
+            c.target.z = c.home.z + Math.sin(a) * r;
+            if (isWalkable(c.target.x, c.target.z, 0.28)) break;
+          }
+          c.wait = 1.6 + this._rand() * 3.6;
+        }
+        const dx = c.target.x - c.pos.x;
+        const dz = c.target.z - c.pos.z;
+        const dist = Math.hypot(dx, dz);
+        if (dist > 0.08) {
+          const step = Math.min(speed * dt, dist);
+          c.pos.x += (dx / dist) * step;
+          c.pos.z += (dz / dist) * step;
+          c.facing = Math.atan2(dx, dz);
+          c.phase += dt * 11;
+          const swing = 0.55;
+          c.leftLeg.rotation.x = Math.sin(c.phase) * swing;
+          c.rightLeg.rotation.x = -Math.sin(c.phase) * swing;
+          c.root.position.y = Math.abs(Math.sin(c.phase)) * 0.035;
+          c.head.rotation.x = Math.sin(c.phase * 0.5) * 0.06;
+        } else {
+          // 站定：左顾右盼 + 偶尔啄地
+          c.leftLeg.rotation.x *= 0.9;
+          c.rightLeg.rotation.x *= 0.9;
+          c.root.position.y *= 0.9;
+          c.facing += Math.sin(time * 0.6 + c.phase) * 0.006;
+          if (this._rand() < dt * 0.55) c.peck = 0.42;
+        }
+        if (c.peck > 0) {
+          c.peck -= dt;
+          const t = Math.max(0, c.peck) / 0.42;
+          c.head.rotation.x = Math.sin((1 - t) * Math.PI) * 0.9;
+        }
+        // 偶尔扇一下翅膀
+        const flap = Math.max(0, Math.sin(time * 0.9 + c.phase * 3) - 0.94) * 12;
+        c.leftWing.rotation.z = flap;
+        c.rightWing.rotation.z = -flap;
+      } else {
+        // 离线：蹲下来不动
+        c.root.position.y = -0.05;
+        c.head.rotation.x = 0.28 + Math.sin(time * 0.7 + c.phase) * 0.03;
+        c.leftLeg.rotation.x *= 0.9;
+        c.rightLeg.rotation.x *= 0.9;
+        c.leftWing.rotation.z = 0.1;
+        c.rightWing.rotation.z = -0.1;
+      }
+
+      c.root.position.x = c.pos.x;
+      c.root.position.z = c.pos.z;
+      c.facing += Math.sin(time * 0.5 + c.phase) * 0.0004;
+      c.root.rotation.y = c.facing;
+
+      // 同步给交互系统（小鸡会走，坐标要跟着变）
+      c.interactable.x = c.pos.x;
+      c.interactable.z = c.pos.z;
+      c.interactable.prompt = `查看 ${c.server.name}`;
+
+      // 玩家靠近时把光环点亮一点
+      const d = Math.hypot(playerPos.x - c.pos.x, playerPos.z - c.pos.z);
+      const near = d < 2.4;
+      const baseOpacity = c.server.status === 'offline' ? 0.4 : 0.5;
+      c.ring.material.opacity = near ? 0.9 : baseOpacity;
+    }
+  }
+}
