@@ -1,5 +1,5 @@
-import { STATUS } from './hub.js?v=1.8.4';
-import { drawLine, PALETTE, fmtBytes, axisTime } from './charts.js?v=1.8.4';
+import { STATUS } from './hub.js?v=1.8.5';
+import { drawLine, PALETTE, fmtBytes, axisTime } from './charts.js?v=1.8.5';
 
 /* ------------------------------------------------------------------ *
  * 探针列表悬浮层 + 服务器详情（统一的展示形式）
@@ -260,7 +260,7 @@ export class ProbePanel {
   /** 档位表：按 hub 保留天数生成（生成一次就缓存；拿不到 /api/me 时退回 7 天） */
   _ranges() {
     if (!this._rangesCache) {
-      const hd = Number(window.__SUTADEWU_ME__ && window.__SUTADEWU_ME__.historyDays) || 0;
+      const hd = Number(window.__SUTADYU_ME__ && window.__SUTADYU_ME__.historyDays) || 0;
       this._rangesCache = rangesFor(hd);
     }
     return this._rangesCache;

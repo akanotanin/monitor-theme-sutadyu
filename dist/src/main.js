@@ -1,24 +1,24 @@
 import * as THREE from 'three';
-import { TownCamera } from './camera.js?v=1.8.4';
-import { buildWorld } from './world.js?v=1.8.4';
-import { Player } from './player.js?v=1.8.4';
-import { InteractionManager } from './interact.js?v=1.8.4';
-import { ui } from './ui.js?v=1.8.4';
-import { clamp } from './util.js?v=1.8.4';
-import { debugColliderCount, isWalkable, groundHeight } from './collision.js?v=1.8.4';
-import { isInRiver } from './config.js?v=1.8.4';
-import { ServerFeed } from './hub.js?v=1.8.4';
-import { ChickenHerd } from './chickens.js?v=1.8.4';
-import { ProbeUI } from './probeui.js?v=1.8.4';
-import { ServerCards } from './cards.js?v=1.8.4';
-import { ProbePanel } from './panel.js?v=1.8.4';
+import { TownCamera } from './camera.js?v=1.8.5';
+import { buildWorld } from './world.js?v=1.8.5';
+import { Player } from './player.js?v=1.8.5';
+import { InteractionManager } from './interact.js?v=1.8.5';
+import { ui } from './ui.js?v=1.8.5';
+import { clamp } from './util.js?v=1.8.5';
+import { debugColliderCount, isWalkable, groundHeight } from './collision.js?v=1.8.5';
+import { isInRiver } from './config.js?v=1.8.5';
+import { ServerFeed } from './hub.js?v=1.8.5';
+import { ChickenHerd } from './chickens.js?v=1.8.5';
+import { ProbeUI } from './probeui.js?v=1.8.5';
+import { ServerCards } from './cards.js?v=1.8.5';
+import { ProbePanel } from './panel.js?v=1.8.5';
 
 /* ------------------------------------------------------------------ *
  * 渲染器 / 场景 / 光照 —— 统一在这里初始化
  * ------------------------------------------------------------------ */
 
-/* 主题配置：由 boot.js 预先写进 window.__SUTADEWU_CONFIG__ */
-const THEME = window.__SUTADEWU_CONFIG__ || {};
+/* 主题配置：由 boot.js 预先写进 window.__SUTADYU_CONFIG__ */
+const THEME = window.__SUTADYU_CONFIG__ || {};
 // 名牌档位：auto = 宽屏常驻、窄屏自动收成「靠近才展开」；其余按设置原样
 const LABEL_SETTING = ['always', 'near', 'dot', 'auto'].includes(THEME.labelMode) ? THEME.labelMode : 'auto';
 const NARROW_VIEW = 700;   // 与 CSS 断点同口径
@@ -107,7 +107,7 @@ document.querySelector('.probe-bar .pp-open')?.addEventListener('click', () => p
    访客本机偏好，存 localStorage（不动站点配置，也不影响别的访客）。 */
 const cardsToggle = document.querySelector('.probe-bar .pp-cards');
 let cardsOn = true;
-try { cardsOn = localStorage.getItem('sutadewu.cards') !== '0'; } catch (err) { /* 隐私模式：用默认值 */ }
+try { cardsOn = localStorage.getItem('sutadyu.cards') !== '0'; } catch (err) { /* 隐私模式：用默认值 */ }
 const applyCardsToggle = () => {
   serverCards.setEnabled(cardsOn);
   if (!cardsToggle) return;
@@ -116,7 +116,7 @@ const applyCardsToggle = () => {
 };
 cardsToggle?.addEventListener('click', () => {
   cardsOn = !cardsOn;
-  try { localStorage.setItem('sutadewu.cards', cardsOn ? '1' : '0'); } catch (err) { /* 同上 */ }
+  try { localStorage.setItem('sutadyu.cards', cardsOn ? '1' : '0'); } catch (err) { /* 同上 */ }
   applyCardsToggle();
 });
 applyCardsToggle();
@@ -282,7 +282,7 @@ function applyLowQuality() {
     const mats = Array.isArray(o.material) ? o.material : [o.material];
     for (const m of mats) m.needsUpdate = true;
   });
-  console.log('[sutadewu] 帧率偏低，已自动降低画质');
+  console.log('[sutadyu] 帧率偏低，已自动降低画质');
 }
 
 function frame(now) {
@@ -345,9 +345,9 @@ function frame(now) {
     api.ready = true;
     // 顺序要紧：先把揭幕钩子发出去，再做收尾。收尾要是出错（如冷加载时 #loading
     // 已被兜底移除），异常绝不能吞掉揭幕、也不能打断渲染循环
-    window.__SUTADEWU_BOOT_READY__?.();
+    window.__SUTADYU_BOOT_READY__?.();
     try { ui.hideLoading(); } catch (err) { /* 收尾问题不打断渲染 */ }
-    console.log('[sutadewu] 场景已就绪', JSON.stringify(api.debug()));
+    console.log('[sutadyu] 场景已就绪', JSON.stringify(api.debug()));
   }
 }
 

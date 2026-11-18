@@ -11,7 +11,7 @@
  *   · ws /api/ws                  → 实时推送（发 {op:"get"} 要一份快照）
  */
 
-const SHORT = 'sutadewu';
+const SHORT = 'sutadyu';
 
 const DEFAULTS = {
   viewHeight: '24',
@@ -79,12 +79,12 @@ const [config, me] = await Promise.all([loadConfig(), loadMe()]);
 // 预览/验收用：?labelMode=auto|always|near|dot 直接切名牌档位（不动站点配置）
 const forcedLabel = new URLSearchParams(location.search).get('labelMode');
 if (LABEL_MODES.includes(forcedLabel)) config.labelMode = forcedLabel;
-window.__SUTADEWU_CONFIG__ = config;
-window.__SUTADEWU_ME__ = {
+window.__SUTADYU_CONFIG__ = config;
+window.__SUTADYU_ME__ = {
   siteName: (me && me.site_name) || '',
   historyDays: Number(me && me.history_days) > 0 ? Number(me.history_days) : 0,
 };
-const siteName = window.__SUTADEWU_ME__.siteName;
+const siteName = window.__SUTADYU_ME__.siteName;
 // 标签页标题：hub 给的站名（拿不到就保留 Monitor）
 if (siteName) {
   document.title = siteName;
@@ -105,8 +105,8 @@ const reveal = () => {
   el?.classList.add('done');
   setTimeout(() => el?.remove(), 1000);
 };
-window.__SUTADEWU_BOOT_READY__ = reveal;
+window.__SUTADYU_BOOT_READY__ = reveal;
 // 兜底：主模块异常时最多 5 秒也揭幕，不会永远停在奶油色幕布
 setTimeout(reveal, 5000);
 
-await import('./src/main.js?v=1.8.4');
+await import('./src/main.js?v=1.8.5');

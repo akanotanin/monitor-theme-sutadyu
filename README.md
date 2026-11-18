@@ -1,4 +1,4 @@
-# sutadewu
+# sutadyu
 
 把 Monitor 的节点数据做成一座可以散步的体素小镇：**每台服务器是一只小鸡**。纯静态主题，无构建步骤，放进 hub 的主题目录即可。
 
@@ -17,7 +17,7 @@
 
 ## 主题设置
 
-后台「主题 → sutadewu」里可调：
+后台「主题 → sutadyu」里可调：
 
 | 设置项 | 默认 | 说明 |
 | --- | --- | --- |
@@ -29,7 +29,7 @@
 
 ## 安装与许可
 
-1. 从 [Releases](https://github.com/akanotanin/monitor-theme-sutadewu/releases) 下载最新 `theme.tar.gz`；
+1. 从 [Releases](https://github.com/akanotanin/monitor-theme-sutadyu/releases) 下载最新 `theme.tar.gz`；
 2. 面板 → 主题 → 安装主题，上传即可；之后可在面板里「从 GitHub 更新」。
 
 包结构：`theme.json` + `preview.png` + `dist/`（站点根，hub 直接托管）+ `LICENSE` + `README.md`。

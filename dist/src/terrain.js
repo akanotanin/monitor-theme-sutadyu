@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { MeshBatch, mulberry32 } from './util.js?v=1.8.4';
-import { C, MAP, RIVER, PATHS } from './config.js?v=1.8.4';
+import { MeshBatch, mulberry32 } from './util.js?v=1.8.5';
+import { C, MAP, RIVER, PATHS } from './config.js?v=1.8.5';
 
 /* ------------------------------------------------------------------ *
  * 地面：一块 44×38 的泥土基座 + 东西两块草地 + 河床 + 铺路砖

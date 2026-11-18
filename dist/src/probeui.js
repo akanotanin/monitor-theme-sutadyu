@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { STATUS } from './hub.js?v=1.8.4';
+import { STATUS } from './hub.js?v=1.8.5';
 
 /* ------------------------------------------------------------------ *
  * 探针界面：右上角概况条、小鸡头顶名牌、右侧服务器详情卡
