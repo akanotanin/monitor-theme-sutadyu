@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { STATUS } from './hub.js?v=1.8.13';
+import { STATUS } from './hub.js?v=1.8.14';
 
 /* ------------------------------------------------------------------ *
  * 小鸡头顶的信息卡（纸卡风），两档：
@@ -395,7 +395,10 @@ function sigOf(server) {
     Math.round(server.cpu ?? -1), Math.round(server.mem ?? -1), Math.round(server.disk ?? -1),
     server.role,
     server.avgLatency === null || server.avgLatency === undefined ? null : Math.round(server.avgLatency),
-    server.lastSeenAgo,
+    // 显示口径：离线时长按 fmtAgo 的分档取（原始 lastSeenAgo 每推 +2，会让离线卡每 2 s 白重画一次）
+    server.status === 'offline' && server.lastSeenAgo !== null && server.lastSeenAgo !== undefined
+      ? fmtAgo(server.lastSeenAgo)
+      : null,
     server.netIn === null || server.netIn === undefined ? null : fmtRateShort(server.netIn),
     server.netOut === null || server.netOut === undefined ? null : fmtRateShort(server.netOut),
     server.dayRx === null || server.dayRx === undefined ? null : fmtBytesShort(server.dayRx),
@@ -460,6 +463,9 @@ export class ServerCards {
       this.group.remove(card.dot);
       card.tex.dispose();
       card.dotTex.dispose();
+      // 贴图之外，SpriteMaterial 也是要释放的（随机器增删累积，虽然量小但不是免费）
+      card.sprite.material?.dispose();
+      card.dot.material?.dispose();
       this.cards.delete(id);
     }
     for (const server of servers) {
@@ -475,14 +481,19 @@ export class ServerCards {
         const aspect = canvas.height / canvas.width;
         const h = W_COMPACT * aspect;
         sprite.scale.set(W_COMPACT, h, 1);
-        card = { sprite, tex, dot, dotTex, sig: sigOf(server), tier: 'compact', op: 0, dotOp: 0, clipOp: 1, clipped: false, w: W_COMPACT, h, aspect, gap: 0.72, pending: false };
+        card = { sprite, tex, dot, dotTex, dotSig: server.status, sig: sigOf(server), tier: 'compact', op: 0, dotOp: 0, clipOp: 1, clipped: false, w: W_COMPACT, h, aspect, gap: 0.72, pending: false };
         this.cards.set(server.id, card);
+      }
+      // 状态点只取决于 status：CPU 抖一下/网速换档时重画 168×168 贴图纯属浪费
+      // （200 台时每条 WS 推送会重建 ~200 张，且不受「每帧 3 张」预算约束）
+      if (server.status !== card.dotSig) {
+        card.dotSig = server.status;
+        this._setTexture(card, 'dot', drawDot(server));
       }
       const sig = sigOf(server);
       if (sig !== card.sig) {
         card.sig = sig;
         card.pending = true;                              // 重画排队，避免一次刷新画几十张
-        this._setTexture(card, 'dot', drawDot(server));   // 状态点很小，直接重画
       }
     }
   }

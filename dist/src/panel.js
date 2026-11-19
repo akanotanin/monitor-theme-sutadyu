@@ -1,5 +1,5 @@
-import { STATUS } from './hub.js?v=1.8.13';
-import { drawLine, PALETTE, fmtBytes, axisTime } from './charts.js?v=1.8.13';
+import { STATUS } from './hub.js?v=1.8.14';
+import { drawLine, PALETTE, fmtBytes, axisTime } from './charts.js?v=1.8.14';
 
 /** 详情图表缓存的有效期：只为「同一视图里来回切页签/档位」服务，不作长期缓存 */
 const DETAIL_CACHE_TTL = 60_000;
@@ -141,7 +141,7 @@ function cardHtml(server) {
       : st.label;
   const uptimeTitle = live && server.uptimeSec !== null ? ` · 已运行 ${fmtUptime(server.uptimeSec)}` : '';
   return `
-    <button class="pp-card${server.status === 'offline' ? ' is-off' : ''}" type="button" data-id="${server.id}"
+    <button class="pp-card${server.status === 'offline' ? ' is-off' : ''}" type="button" data-id="${escapeHtml(server.id)}"
       title="点开 ${escapeHtml(server.name)} 的详情${escapeHtml(uptimeTitle)}">
       <div class="pc-head">
         <span class="pc-dot" style="background:${st.css}"></span>
@@ -218,8 +218,13 @@ export class ProbePanel {
     if (!this.open) return;
     if (this.view === 'detail' && this.selectedId) {
       const srv = this.servers.find((s) => s.id === this.selectedId);
+      // 选中的机器被删了：详情页别停在最后一份快照上（图表也不再更新），退回列表
+      if (!srv) {
+        this.showList();
+        return;
+      }
       // 详情页不整体重绘，避免打断看图；只刷新标题里的状态
-      if (srv && this.titleEl) {
+      if (this.titleEl) {
         const st = STATUS[srv.status] || STATUS.unknown;
         this.titleEl.innerHTML = `🐔 ${escapeHtml(srv.name)} <span class="pd-state" style="color:${st.css}">${st.label}</span>`;
       }
@@ -240,7 +245,12 @@ export class ProbePanel {
     if (!this.bodyEl) return;
     const total = this.servers.length;
     const online = this.servers.filter((s) => s.status === 'online' || s.status === 'warn').length;
-    const lat = this.servers.map((s) => s.avgLatency).filter((v) => typeof v === 'number');
+    // 离线节点的延迟是「最后一次看到」的旧值（hub 的 summary 也不把它算进平均），
+    // 列表头部的平均必须同口径，不然和右上角概况条同屏打架。
+    const lat = this.servers
+      .filter((s) => s.status !== 'offline')
+      .map((s) => s.avgLatency)
+      .filter((v) => typeof v === 'number');
     const avg = lat.length ? Math.round(lat.reduce((a, b) => a + b, 0) / lat.length) : null;
     if (this.sumEl) {
       this.sumEl.innerHTML = this.denied
@@ -422,7 +432,11 @@ export class ProbePanel {
       } catch (err) {
         // 超时别把英文 AbortError 原样拼给访客看（「The user aborted a request.」不像人能读的提示）
         const msg = ac.signal.aborted ? '读取超时（15 秒无响应）' : err.message;
-        if (token === this.detailToken) box.innerHTML = `<p class="note">读取失败：${escapeHtml(msg)}</p>`;
+        if (token === this.detailToken) {
+          // 旧图表已经被「正在读探针数据…」顶掉了：句柄先释放，别留下挂在游离 canvas 上的监听器
+          this._destroyCharts();
+          box.innerHTML = `<p class="note">读取失败：${escapeHtml(msg)}</p>`;
+        }
         return;
       } finally {
         clearTimeout(timer);
@@ -456,7 +470,10 @@ export class ProbePanel {
         : `<span class="cl">${items.map(([name, color]) => `<i style="background:${color}"></i>${escapeHtml(name)}`).join('')}</span>`;
 
     const panels = [
-      ['网络速率', [['下行', '#4c9a5e', (x) => (x.net_rx || 0) / 1024], ['上行', '#4a86c8', (x) => (x.net_tx || 0) / 1024]], netTop, ' KB/s', (v) => (v >= 1024 ? `${(v / 1024).toFixed(2)} MB/s` : `${v.toFixed(1)} KB/s`)],
+      ['网络速率', [['下行', '#4c9a5e', (x) => (x.net_rx || 0) / 1024], ['上行', '#4a86c8', (x) => (x.net_tx || 0) / 1024]], netTop, ' KB/s',
+        (v) => (v >= 1024 ? `${(v / 1024).toFixed(2)} MB/s` : `${v.toFixed(1)} KB/s`),
+        // 轴刻度也要跟着换单位：缺这一格会印出「2.5k KB/s」这种双单位
+        (v) => (v >= 1024 ? `${(v / 1024).toFixed(1)} MB/s` : `${Math.round(v)} KB/s`)],
       ['TCP / UDP 连接', [['TCP', '#4a86c8', (x) => x.tcp], ['UDP', '#c4555f', (x) => x.udp]], connTop, '', (v) => String(v)],
       [server.procs ? `进程 · ${server.procs}` : '进程', [['进程', '#9b6fbf', (x) => x.procs]], procTop, '', (v) => String(v)],
       ['CPU', [['CPU', '#4a86c8', (x) => x.cpu]], cpuTop, '%', (v) => `${Number(v).toFixed(1)}%`],
@@ -551,6 +568,8 @@ export class ProbePanel {
     this.open = true;
     this.showDetail(server);
     this._takeFocus();
+    // 详情页正是看延迟曲线的入口，同样要顺手刷一轮三网（与 show() 一样受 30 s 冷却约束）
+    this.onOpen?.();
   }
 
   hide() {

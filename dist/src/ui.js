@@ -13,7 +13,6 @@ const noticeEl = $('#notice');
 const noticeTitle = noticeEl.querySelector('h2');
 const noticeBody = noticeEl.querySelector('.body');
 const toastEl = $('#toast');
-const loadingEl = $('#loading');
 const hudEl = $('#hud');
 
 let toastTimer = 0;
@@ -90,8 +89,9 @@ export const ui = {
 
   hideLoading() {
     // 冷加载竞态兜底：#loading 可能已被 boot 的 5 秒揭幕兜底移除（模块图加载慢于它，
-    // ui.js 初始化时元素已不在），这里重新取一次、缺失就安全跳过，别让收尾异常打断渲染
-    const el = document.getElementById('loading') || loadingEl;
+    // ui.js 初始化时元素已不在）——重新取一次，取不到就安全跳过。
+    // ★别再回落到初始化时缓存的元素引用：被移除后那只是个游离节点，改它的样式没有意义。
+    const el = document.getElementById('loading');
     if (el) {
       el.style.opacity = '0';
       el.style.visibility = 'hidden';

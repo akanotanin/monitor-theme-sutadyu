@@ -1,4 +1,4 @@
-import { MAP, WALKWAYS, isInRiver, isOnBridge, groundHeightAt } from './config.js?v=1.8.13';
+import { MAP, WALKWAYS, isInRiver, isOnBridge, groundHeightAt } from './config.js?v=1.8.14';
 
 /* ------------------------------------------------------------------ *
  * 碰撞登记表（矩形 / 圆），玩家按轴移动时统一查询
@@ -71,6 +71,7 @@ export function isWalkable(x, z, r = 0.34) {
   if (x < MAP.x1 + r || x > MAP.x2 - r || z < MAP.z1 + r || z > MAP.z2 - r) return false;
   if (hitsSolid(x, z, r)) return false;
   if (isOnWalkway(x, z) || isOnBridge(x, z)) return true;
-  if (isInRiver(x, z)) return false;
+  // 河判定带上角色半径：纯点测会让「半个身子悬在水面上」也算可走（1.8.14 的小鸡就踩过这个坑）
+  if (isInRiver(x, z, r)) return false;
   return true;
 }

@@ -1,17 +1,17 @@
 import * as THREE from 'three';
-import { TownCamera } from './camera.js?v=1.8.13';
-import { buildWorld } from './world.js?v=1.8.13';
-import { Player } from './player.js?v=1.8.13';
-import { InteractionManager } from './interact.js?v=1.8.13';
-import { ui } from './ui.js?v=1.8.13';
-import { clamp } from './util.js?v=1.8.13';
-import { debugColliderCount, isWalkable, groundHeight } from './collision.js?v=1.8.13';
-import { isInRiver, LAYOUT } from './config.js?v=1.8.13';
-import { ServerFeed } from './hub.js?v=1.8.13';
-import { ChickenHerd } from './chickens.js?v=1.8.13';
-import { ProbeUI } from './probeui.js?v=1.8.13';
-import { ServerCards } from './cards.js?v=1.8.13';
-import { ProbePanel } from './panel.js?v=1.8.13';
+import { TownCamera } from './camera.js?v=1.8.14';
+import { buildWorld } from './world.js?v=1.8.14';
+import { Player } from './player.js?v=1.8.14';
+import { InteractionManager } from './interact.js?v=1.8.14';
+import { ui } from './ui.js?v=1.8.14';
+import { clamp } from './util.js?v=1.8.14';
+import { debugColliderCount, isWalkable, groundHeight } from './collision.js?v=1.8.14';
+import { isInRiver, LAYOUT } from './config.js?v=1.8.14';
+import { ServerFeed } from './hub.js?v=1.8.14';
+import { ChickenHerd } from './chickens.js?v=1.8.14';
+import { ProbeUI } from './probeui.js?v=1.8.14';
+import { ServerCards } from './cards.js?v=1.8.14';
+import { ProbePanel } from './panel.js?v=1.8.14';
 
 /* ------------------------------------------------------------------ *
  * 渲染器 / 场景 / 光照 —— 统一在这里初始化
@@ -93,7 +93,7 @@ const panel = new ProbePanel();
 const feed = new ServerFeed();
 // 打开面板时让主循环强制刷一轮三网（用户想看「现在」的延迟；冷却 30 s 防反复开关）
 panel.onOpen = () => feed.refreshMetrics(true);
-let herdSyncMs = 0;   // 最近一次 herd.sync 的耗时：验收量首帧建镇成本用
+let herdSyncMs = 0;   // 历史最大一次 herd.sync 的耗时：验收量首帧建镇成本用（WS 每帧都会刷新它，取最后一次会读到廉价那次）
 feed.onChange((servers, updatedAt) => {
   const t0 = performance.now();
   herd.sync(servers);
@@ -362,7 +362,7 @@ function frame(now) {
   else camRig.unpin();
   camRig.update(dt, player.pos.x, player.pos.z, aheadX, aheadZ);
 
-  interaction.update(camRig.camera, player.pos, window.innerWidth, window.innerHeight, true);
+  interaction.update(camRig.camera, player.pos, window.innerWidth, window.innerHeight, !panel.open);
   world.update(dt, elapsed, player.pos);
   herd.update(dt, elapsed, player.pos);
   // 交互对象自己带 serverId：按名字子串反查会在 web / web-2 这种前缀名上认错鸡
@@ -429,6 +429,7 @@ const api = {
       herdSyncMs: +herdSyncMs.toFixed(1),
       chickenList: herd.items.map((i) => ({
         id: i.server.id, name: i.server.name, x: +i.pos.x.toFixed(2), z: +i.pos.z.toFixed(2),
+        y: +i.root.position.y.toFixed(3),
         // 槽位中心（不走位）：验收要量「落脚点够不够散」，实时坐标会被溜达糊掉
         sx: i.slotHome ? +i.slotHome.x.toFixed(2) : null, sz: i.slotHome ? +i.slotHome.z.toFixed(2) : null,
       })),
@@ -485,8 +486,8 @@ const api = {
     const v = new THREE.Vector3(item.pos.x, item.height * 0.6, item.pos.z).project(camRig.camera);
     return { x: (v.x * 0.5 + 0.5) * window.innerWidth, y: (-v.y * 0.5 + 0.5) * window.innerHeight };
   },
-  probe(x, z) {
-    return { walkable: isWalkable(x, z, player.radius), water: isInRiver(x, z), ground: groundHeight(x, z) };
+  probe(x, z, r = player.radius) {
+    return { walkable: isWalkable(x, z, r), water: isInRiver(x, z), ground: groundHeight(x, z) };
   },
   crops() {
     return world.farm.crops.map((c) => ({
@@ -500,8 +501,10 @@ const api = {
   setAutopilot(x, z) { autoTarget = { x, z }; return { target: autoTarget }; },
   stopAutopilot() { autoTarget = null; },
   setViewHeight(h) {
-    camRig.viewHeight = h;
+    // 调试接口也要钳制：h=0/负数会让正交相机的上下边界重合（整屏黑）
+    camRig.viewHeight = clamp(Number(h) || camRig.viewHeight, 10, 60);
     camRig.resize(window.innerWidth / window.innerHeight);
+    return { viewHeight: camRig.viewHeight };
   },
   cards: serverCards,
   panel,          // 验收/调试：直接驱动列表（模拟 WS 推送、检查节点复用）

@@ -1,18 +1,18 @@
 import * as THREE from 'three';
-import { MeshBatch, mulberry32 } from './util.js?v=1.8.13';
+import { MeshBatch, mulberry32 } from './util.js?v=1.8.14';
 import {
   C, P, FARM, HOUSES, LAMPS, BENCHES, PLANTERS, CRATES, BARRELS, FENCES, SIGN, FOUNTAIN,
-} from './config.js?v=1.8.13';
-import { buildTerrain } from './terrain.js?v=1.8.13';
-import { buildRiver } from './river.js?v=1.8.13';
+} from './config.js?v=1.8.14';
+import { buildTerrain } from './terrain.js?v=1.8.14';
+import { buildRiver } from './river.js?v=1.8.14';
 import {
   buildHouse, buildFountain, buildSign, buildBench, buildLamp, buildCrate,
   buildBarrel, buildFence, buildPlanter,
-} from './buildings.js?v=1.8.13';
-import { buildFarm } from './farm.js?v=1.8.13';
-import { buildNature } from './nature.js?v=1.8.13';
-import { buildInhabitants } from './inhabitants.js?v=1.8.13';
-import { addRectCollider } from './collision.js?v=1.8.13';
+} from './buildings.js?v=1.8.14';
+import { buildFarm } from './farm.js?v=1.8.14';
+import { buildNature } from './nature.js?v=1.8.14';
+import { buildInhabitants } from './inhabitants.js?v=1.8.14';
+import { addRectCollider } from './collision.js?v=1.8.14';
 
 /* ------------------------------------------------------------------ *
  * 把整个小镇拼起来
@@ -157,7 +157,7 @@ export function buildWorld(scene) {
     }),
   });
 
-  addRectCollider(SIGN.x, SIGN.z, 1.95, 0.75);
+  // 告示牌的碰撞体由 buildings.buildSign 自己登记（1.9×0.7），这里别再注册一次
 
   // ---- 喷泉水花 ----
   const jetGeo = new THREE.BoxGeometry(0.09, 0.09, 0.09);

@@ -27,6 +27,12 @@ export class ProbeUI {
 
   setSummary(summary, updatedAt) {
     this.updatedAt = updatedAt;
+    this._last = { summary, updatedAt };   // 记住最近一份：denied 翻回 false 时立刻恢复，不等下一帧
+    this._paint();
+  }
+
+  _paint() {
+    const { summary, updatedAt } = this._last || { summary: null, updatedAt: null };
     if (!this.bar) return;
     if (this.denied) {
       // 站点关了公开页：不是「未发现服务器」，是「需要登录」
@@ -35,6 +41,7 @@ export class ProbeUI {
       if (this.barTime) this.barTime.textContent = '';
       return;
     }
+    if (!summary) return;
     const ok = summary.online === summary.total && summary.total > 0;
     this.bar.dataset.state = summary.total === 0 ? 'empty' : ok ? 'ok' : 'warn';
     if (this.barStatus) {
@@ -52,11 +59,7 @@ export class ProbeUI {
     const next = !!v;
     if (this.denied === next) return;
     this.denied = next;
-    if (this.denied) {
-      if (this.bar) this.bar.dataset.state = 'locked';
-      if (this.barStatus) this.barStatus.textContent = '本站未对访客开放';
-      if (this.barTime) this.barTime.textContent = '';
-    }
+    this._paint();
   }
 
   /** 记录当前聚焦的小鸡（名牌改由 3D 卡片显示） */

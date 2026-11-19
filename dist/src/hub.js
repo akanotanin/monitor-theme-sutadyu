@@ -271,7 +271,9 @@ export class ServerFeed {
     if (!Array.isArray(nodes)) return;
     const prev = new Map(this.servers.map((s) => [s.id, s]));
     this.servers = nodes
-      .filter((n) => n.public !== false)
+      // 没有 id 的节点直接丢掉：id 缺失时按下标兜底，而 _apply 会把离线机排到队尾 →
+      // 下标每帧都在变，缓存键与 /metrics 请求会指向另一台机器（宁可少显示一台，也别张冠李戴）
+      .filter((n) => n.public !== false && n.id !== undefined && n.id !== null)
       .map(normalize)
       .map((s) => {
         // 保留上一次算好的三网数据，避免刷新时卡片闪空

@@ -214,9 +214,9 @@ export const C = {
 
 /* ------------------------------ 几何小工具 ------------------------------ */
 
-/** 河面范围（南北向，贯穿整张地图） */
-export function isInRiver(x, z) {
-  return x > RIVER.centerX - RIVER.halfWidth && x < RIVER.centerX + RIVER.halfWidth && Math.abs(z) < MAP.z2 + 2;
+/** 河面范围（南北向，贯穿整张地图）。r = 判定半径：脚不能踩进水里，半个身子也不行 */
+export function isInRiver(x, z, r = 0) {
+  return x > RIVER.centerX - RIVER.halfWidth - r && x < RIVER.centerX + RIVER.halfWidth + r && Math.abs(z) < MAP.z2 + 2 + r;
 }
 
 /** 木桥桥面 */

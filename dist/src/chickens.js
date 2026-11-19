@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { MeshBatch } from './util.js?v=1.8.13';
-import { STATUS } from './hub.js?v=1.8.13';
-import { isWalkable } from './collision.js?v=1.8.13';
-import { MAP } from './config.js?v=1.8.13';
+import { MeshBatch } from './util.js?v=1.8.14';
+import { STATUS } from './hub.js?v=1.8.14';
+import { isWalkable, groundHeight } from './collision.js?v=1.8.14';
+import { MAP, isOnBridge } from './config.js?v=1.8.14';
 
 /* ------------------------------------------------------------------ *
  * 探针小鸡：一只鸡 = 一台服务器
@@ -55,7 +55,11 @@ export function buildSlots(count) {
     seed = (seed * 1664525 + 1013904223) >>> 0;
     return seed / 4294967296;
   };
-  const CAND = 96;                        // 每个新点位试 96 个候选，谁离大家最远选谁（32 个时 40 台只能做到 5.68）
+  // 每个新点位试多少个候选：谁离大家最远选谁。
+  // 1.8.14 起河判定带上了半径（河岸不能站），候选比之前少，前 48 个点要用更多候选才稳得住
+  // 「40 台以内 ≥6.0」；之后间距本来就要逐级放宽，用 96 个就够（不必为 200 台白付 300 万次距离）。
+  // ★按 slots.length 取值，前缀依旧稳定：前 N 个点与 buildSlots(N) 完全一致。
+  const CAND = slots.length < 48 ? 320 : 96;
   // 生成点位之间的最小间距：一张卡宽（6.0）。两点挨得比卡还近，屏上必有一张被收成
   // 状态点（卡片防叠是 6.6），跟「每个点都够散」的承诺不一致。机器太多、地图塞不下
   // 时按 6% 逐级放宽到 4.0（60 台那种密度下 6.0 已不可能），宁可略挤也别把鸡甩到地图角落重叠。
@@ -64,20 +68,23 @@ export function buildSlots(count) {
   while (slots.length < count && guard < 4000) {
     guard++;
     let best = null;
-    let bestD = -1;
+    let bestD2 = -1;                      // 用平方距离比较（免掉内层的 Math.hypot，200 台能省一半时间）
     for (let t = 0; t < CAND; t++) {
       // 候选框从当前地图推：1.8.7 把镇子放大后，写死的 ±19/±16 只盖住中间 70%×66%
       const x = MAP.x1 + 1.4 + rand() * (MAP.x2 - MAP.x1 - 2.8);
       const z = MAP.z1 + 1.4 + rand() * (MAP.z2 - MAP.z1 - 2.8);
       if (!isWalkable(x, z, 0.85)) continue;   // 留足净空：漫游半径内别撞墙/进水
-      let dmin = Infinity;
+      let dmin2 = Infinity;
       for (const s of slots) {
-        const dd = Math.hypot(s.x - x, s.z - z);
-        if (dd < dmin) dmin = dd;
+        const ddx = s.x - x;
+        const ddz = s.z - z;
+        const dd = ddx * ddx + ddz * ddz;
+        if (dd < dmin2) dmin2 = dd;
       }
-      if (dmin > bestD) { bestD = dmin; best = { x, z }; }
+      if (dmin2 > bestD2) { bestD2 = dmin2; best = { x, z }; }
     }
     if (!best) break;                     // 候选全不可走（几乎不会发生）
+    const bestD = Math.sqrt(bestD2);
     if (bestD < minGap) {
       if (minGap > SLOT_MIN_GAP_FLOOR) {
         minGap = Math.max(SLOT_MIN_GAP_FLOOR, minGap * 0.94);
@@ -199,12 +206,27 @@ export class ChickenHerd {
     this._byId = new Map();
     this._rng = 20261118;
     this._slots = null;
+    this._slotsFor = 0;            // 槽位表是按多少台建的：建不满（超过生成上限）时别每帧重跑
     this._usedSlots = new Set();   // 已被占用的槽位下标
   }
 
   _rand() {
     this._rng = (this._rng * 1664525 + 1013904223) >>> 0;
     return this._rng / 4294967296;
+  }
+
+  /**
+   * 备好至少 n 个槽位。buildSlots 有 4000 次尝试的上限（机器再多也建不满），
+   * 所以记住「已经按多少台试过」——否则机器数 > 产出数时，sync() 的
+   * `this._slots.length < servers.length` 恒真，每帧都会重跑一次整表（32 s 级冻结）。
+   */
+  _ensureSlots(n) {
+    const want = Math.max(n, CHICKEN_SLOTS.length);
+    if (!this._slots || want > this._slotsFor) {
+      this._slots = buildSlots(want);
+      this._slotsFor = want;
+    }
+    return this._slots;
   }
 
   /**
@@ -215,10 +237,7 @@ export class ChickenHerd {
     let i = 0;
     while (this._usedSlots.has(i)) i++;
     this._usedSlots.add(i);
-    if (!this._slots || this._slots.length <= i) {
-      // buildSlots 是确定性的前缀稳定生成：前 10 个手工点位、之后按最远点采样追加
-      this._slots = buildSlots(Math.max(i + 1, CHICKEN_SLOTS.length));
-    }
+    this._ensureSlots(i + 1);
     return i;
   }
 
@@ -227,9 +246,7 @@ export class ChickenHerd {
     // 槽位表一次建够：只靠 _takeSlot 里的按需重建，首帧会跑 buildSlots(10)+buildSlots(11)+…+buildSlots(N)，
     // 成本 O(N²)（实测 100 台 0.5 s、200 台 3.3 s 主线程冻结，且全部发生在首帧之前）。
     // buildSlots 的前缀是稳定的，一次建到 N 与逐个追加得到的前 N 个点位完全相同。
-    if (!this._slots || this._slots.length < servers.length) {
-      this._slots = buildSlots(Math.max(servers.length, CHICKEN_SLOTS.length));
-    }
+    this._ensureSlots(servers.length);
     const seen = new Set();
     servers.forEach((server) => {
       seen.add(server.id);
@@ -278,6 +295,13 @@ export class ChickenHerd {
       z = slot.z + Math.sin(angle) * dist;
     }
 
+    // 出生抖动不能把鸡抖进水里/障碍里（河岸边的槽位中心离水缘可能只有半个身位）。
+    // 抖歪了就退回槽位中心：槽位本身是按 0.85（手工点是 1.8）净空选出来的。
+    if (!isWalkable(x, z, 0.28)) {
+      x = slot.x;
+      z = slot.z;
+    }
+
     const body = buildChicken(this.material, index, 1.02 + ((index * 7) % 3) * 0.04);
     body.root.position.set(x, 0, z);
     body.root.rotation.y = this._rand() * Math.PI * 2;
@@ -309,6 +333,7 @@ export class ChickenHerd {
       height: body.height,
       home: { x, z },              // 出生点（带抖动）：遛弯围着它转
       slotHome: { x: slot.x, z: slot.z },  // 分配到的槽位中心（调试/验收读）
+      baseY: 0,                    // 落脚高度（桥面比草地高）：更新里平滑跟到脚下地面
       radius: slot.r,
       pos: { x, z },
       target: { x, z },
@@ -340,13 +365,20 @@ export class ChickenHerd {
         // 选一个落脚点（挑可走的位置，别漫游进墙里/河里）
         c.wait -= dt;
         if (c.wait <= 0) {
-          for (let tries = 0; tries < 4; tries++) {
+          let picked = false;
+          for (let tries = 0; tries < 4 && !picked; tries++) {
             const a = this._rand() * Math.PI * 2;
             const r = 0.3 + this._rand() * c.radius;
-            c.target.x = c.home.x + Math.cos(a) * r;
-            c.target.z = c.home.z + Math.sin(a) * r;
-            if (isWalkable(c.target.x, c.target.z, 0.28)) break;
+            const tx = c.home.x + Math.cos(a) * r;
+            const tz = c.home.z + Math.sin(a) * r;
+            if (isWalkable(tx, tz, 0.28)) {
+              c.target.x = tx;
+              c.target.z = tz;
+              picked = true;
+            }
           }
+          // 4 次都挑不到可走点：保留上一个目标（它至少是验证过的可走点），
+          // 绝不能把最后一次的「不可走」候选留在 target 里——那样小鸡会径直走进河里站着。
           c.wait = 1.6 + this._rand() * 3.6;
         }
         const dx = c.target.x - c.pos.x;
@@ -354,20 +386,32 @@ export class ChickenHerd {
         const dist = Math.hypot(dx, dz);
         if (dist > 0.08) {
           const step = Math.min(speed * dt, dist);
-          c.pos.x += (dx / dist) * step;
-          c.pos.z += (dz / dist) * step;
-          c.facing = Math.atan2(dx, dz);
-          c.phase += dt * 11;
-          const swing = 0.55;
-          c.leftLeg.rotation.x = Math.sin(c.phase) * swing;
-          c.rightLeg.rotation.x = -Math.sin(c.phase) * swing;
-          c.root.position.y = Math.abs(Math.sin(c.phase)) * 0.035;
-          c.head.rotation.x = Math.sin(c.phase * 0.5) * 0.06;
+          const nx = c.pos.x + (dx / dist) * step;
+          const nz = c.pos.z + (dz / dist) * step;
+          // 每一小步都过碰撞：只验目标点不够——两点之间可能隔着灌木/树干/河水，
+          // 直线走过去照样穿模（200 台规模下可复现；小鸡没有「贴墙滑」的语义，撞上就停）
+          if (isWalkable(nx, nz, 0.28)) {
+            c.pos.x = nx;
+            c.pos.z = nz;
+            c.facing = Math.atan2(dx, dz);
+            c.phase += dt * 11;
+            const swing = 0.55;
+            c.leftLeg.rotation.x = Math.sin(c.phase) * swing;
+            c.rightLeg.rotation.x = -Math.sin(c.phase) * swing;
+            c.root.position.y = c.baseY + Math.abs(Math.sin(c.phase)) * 0.035;
+            c.head.rotation.x = Math.sin(c.phase * 0.5) * 0.06;
+          } else {
+            // 路被挡住：停一下、很快重挑目标（不硬挤，也别把非法点留着）
+            c.wait = 0.2 + this._rand() * 0.5;
+            c.leftLeg.rotation.x *= 0.9;
+            c.rightLeg.rotation.x *= 0.9;
+            c.root.position.y += (c.baseY - c.root.position.y) * Math.min(1, dt * 12);
+          }
         } else {
           // 站定：左顾右盼 + 偶尔啄地
           c.leftLeg.rotation.x *= 0.9;
           c.rightLeg.rotation.x *= 0.9;
-          c.root.position.y *= 0.9;
+          c.root.position.y += (c.baseY - c.root.position.y) * Math.min(1, dt * 12);
           c.facing += Math.sin(time * 0.6 + c.phase) * 0.006;
           if (this._rand() < dt * 0.55) c.peck = 0.42;
         }
@@ -382,13 +426,19 @@ export class ChickenHerd {
         c.rightWing.rotation.z = -flap;
       } else {
         // 离线：蹲下来不动
-        c.root.position.y = -0.05;
+        c.root.position.y = c.baseY - 0.05;
         c.head.rotation.x = 0.28 + Math.sin(time * 0.7 + c.phase) * 0.03;
         c.leftLeg.rotation.x *= 0.9;
         c.rightLeg.rotation.x *= 0.9;
         c.leftWing.rotation.z = 0.1;
         c.rightWing.rotation.z = -0.1;
       }
+
+      // 落脚高度：草地 0（小鸡脚底 -0.02，正好贴草面），桥面按桥板高度抬起来。
+      // ★别直接用 groundHeight()：那是给玩家用的（含 0.1 的鞋底偏移），小鸡照抄会浮在草上。
+      const surfaceY = isOnBridge(c.pos.x, c.pos.z) ? groundHeight(c.pos.x, c.pos.z) : 0;
+      c.baseY += (surfaceY - c.baseY) * Math.min(1, dt * 12);
+      if (offline) c.root.position.y = c.baseY - 0.05;
 
       c.root.position.x = c.pos.x;
       c.root.position.z = c.pos.z;
