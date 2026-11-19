@@ -7,6 +7,9 @@
 
 const PALETTE = ['#4c9a5e', '#4a86c8', '#c9782f', '#9b6fbf', '#c4555f', '#3f9e9e'];
 
+/** 浮框里会插入 hub 给的探针名（后台可控字符串），一律转义 */
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
 export { PALETTE };
 
 function fitCanvas(canvas, W, H) {
@@ -189,7 +192,7 @@ export function drawLine(canvas, series, opt = {}) {
       .map((s, i) => ({ name: s.name, color: s.color, v: row[i] }))
       .filter((o) => o.v != null && isFinite(o.v));
     tip.innerHTML = `<b>${axisTime(nearest, opt.long)}</b>${lines
-      .map((o) => `<span><i style="background:${o.color}"></i>${o.name} ${fmt(o.v)}</span>`)
+      .map((o) => `<span><i style="background:${o.color}"></i>${esc(o.name)} ${fmt(o.v)}</span>`)
       .join('')}`;
     tip.hidden = false;
     const px = ev.clientX - rect.left;

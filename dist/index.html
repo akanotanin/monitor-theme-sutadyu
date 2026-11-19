@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#efd3a4" />
-<meta name="theme-version" content="1.8.8" />
+<meta name="theme-version" content="1.8.9" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23efd3a4'/%3E%3Crect x='5' y='13' width='22' height='12' fill='%23d98478'/%3E%3Crect x='8' y='17' width='5' height='6' fill='%23fff6dc'/%3E%3Crect x='19' y='17' width='5' height='6' fill='%23fff6dc'/%3E%3Crect x='4' y='8' width='24' height='6' fill='%23b85f49'/%3E%3Crect x='14' y='19' width='4' height='6' fill='%237b5b3e'/%3E%3C/svg%3E" />
 <title>Monitor</title>
 <style>
@@ -129,48 +129,6 @@
   .srv-label.compact .dot { width: 7px; height: 7px; }
   .srv-label[data-state="offline"] { opacity: 0.62; }
 
-  /* ---------------- 探针：服务器详情卡 ---------------- */
-  .srv-card {
-    position: absolute;
-    right: clamp(14px, 2.6vw, 30px);
-    top: 76px;
-    z-index: 4;
-    width: 258px;
-    padding: 16px 18px 14px;
-    background: linear-gradient(180deg, rgba(255, 250, 238, 0.96), rgba(250, 240, 220, 0.96));
-    border: 1px solid var(--line);
-    border-radius: 9px;
-    box-shadow: 0 16px 40px rgba(96, 66, 38, 0.2);
-    opacity: 0; visibility: hidden; transform: translateY(-6px);
-    transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s;
-  }
-  .srv-card.show { opacity: 1; visibility: visible; transform: translateY(0); }
-  .srv-close {
-    position: absolute; top: 8px; right: 10px;
-    width: 22px; height: 22px; padding: 0;
-    font: inherit; font-size: 16px; line-height: 1; color: #7d6749;
-    background: transparent; border: 0; cursor: pointer; border-radius: 4px;
-  }
-  .srv-close:hover { background: rgba(120, 88, 56, 0.1); color: #6b5442; }
-  .srv-head { display: flex; align-items: center; gap: 7px; padding-right: 18px; }
-  .srv-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
-  .srv-name { font-size: 14.5px; font-weight: 800; letter-spacing: 0.03em; color: #4f3b2c; }
-  .srv-state { margin-left: auto; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; }
-  .srv-role { margin-top: 6px; font-size: 11px; color: #7d6749; letter-spacing: 0.06em; }
-  .srv-rows { margin-top: 12px; display: grid; gap: 9px; }
-  .srv-row { display: grid; grid-template-columns: 34px 1fr 78px; align-items: center; gap: 8px; }
-  .srv-row .k { font-size: 11px; color: #8d755d; }
-  .srv-row .v { font-size: 11.5px; font-weight: 700; color: #5d4433; text-align: right; }
-  .srv-row .bar { height: 4px; border-radius: 99px; background: rgba(120, 88, 56, 0.14); overflow: hidden; }
-  .srv-row .fill { display: block; height: 100%; border-radius: 99px; background: #7aa86a; transition: width 0.4s ease; }
-  .srv-row .fill.warm { background: #d9a740; }
-  .srv-row .fill.hot { background: #d1665c; }
-  .srv-extra { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11px; color: #6b5442; }
-  .srv-extra b { margin-right: 4px; font-weight: 600; color: #7d6749; }
-  .srv-note { margin-top: 10px; font-size: 11px; line-height: 1.6; color: #8d755d; }
-  .srv-foot { margin-top: 12px; padding-top: 8px; border-top: 1px dashed rgba(120, 88, 56, 0.2); font-size: 10.5px; color: #7d6749; letter-spacing: 0.06em; }
-
-
   /* ---------------- 探针列表 / 详情（统一悬浮表口径） ---------------- */
   #plist {
     position: fixed; inset: 0; z-index: 30;
@@ -208,11 +166,11 @@
     margin: 0; font-size: 17px; font-weight: 800; letter-spacing: 0.1em; color: #4a3527;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  #plist-sum { flex: 1 1 auto; min-width: 0; font-size: 12.5px; color: #8d755d; letter-spacing: 0.03em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #plist-sum { flex: 1 1 auto; min-width: 0; font-size: 12.5px; color: #7d6749; letter-spacing: 0.03em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #plist-sum b { color: #4a3527; font-weight: 700; }
   #plist-back, #plist-close {
     width: 30px; height: 30px; padding: 0;
-    font: inherit; font-size: 16px; line-height: 1; color: #8d755d;
+    font: inherit; font-size: 16px; line-height: 1; color: #7d6749;
     background: transparent; border: 0; border-radius: 7px; cursor: pointer;
   }
   #plist-back { margin-left: -6px; }
@@ -272,15 +230,16 @@
   .pc-badge {
     flex: 0 0 auto;
     padding: 2px 9px; border-radius: 999px;
-    font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: var(--c);
+    font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+    color: color-mix(in srgb, var(--c) 38%, #38271a);
     background: color-mix(in srgb, var(--c) 12%, transparent);
     border: 1px solid color-mix(in srgb, var(--c) 32%, transparent);
   }
-  .pc-spec { font-size: 11.5px; color: #8d755d; letter-spacing: 0.02em; }
+  .pc-spec { font-size: 11.5px; color: #7d6749; letter-spacing: 0.02em; }
 
   .pc-bars { display: grid; gap: 6px; }
   .pc-bar { display: grid; grid-template-columns: 34px 1fr 38px; align-items: center; gap: 9px; }
-  .pc-bar .k { font-size: 11px; color: #8d755d; letter-spacing: 0.02em; }
+  .pc-bar .k { font-size: 11px; color: #7d6749; letter-spacing: 0.02em; }
   .pc-bar .track { height: 5px; border-radius: 99px; background: rgba(120, 88, 56, 0.14); overflow: hidden; }
   .pc-bar .fill { display: block; height: 100%; border-radius: 99px; background: #7aa86a; transition: width 0.4s ease; }
   .pc-bar .fill.warm { background: #d9a740; }
@@ -301,7 +260,7 @@
     font-size: 11px; color: #6b5442;
   }
   .pc-carrier { display: inline-flex; align-items: baseline; gap: 5px; }
-  .pc-carrier b { font-weight: 600; color: #8d755d; }
+  .pc-carrier b { font-weight: 600; color: #7d6749; }
   .pc-carrier .lat { font-weight: 700; color: #4a3527; }
   .pc-carrier .loss { font-size: 10.5px; }
   .pc-carrier .loss.ok { color: #5aa860; }
@@ -313,7 +272,7 @@
   .pc-pre {
     padding-top: 6px; margin-top: 1px;
     border-top: 1px dashed rgba(120, 88, 56, 0.18);
-    font-size: 11px; color: #8d755d; letter-spacing: 0.01em;
+    font-size: 11px; color: #7d6749; letter-spacing: 0.01em;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
 
@@ -390,7 +349,7 @@
   .tabs .tab {
     padding: 5px 14px;
     font: inherit; font-size: 12px; font-weight: 700; letter-spacing: 0.05em;
-    color: #8d755d; background: transparent;
+    color: #7d6749; background: transparent;
     border: 1px solid rgba(120, 88, 56, 0.22);
     border-radius: 7px; cursor: pointer;
     transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
@@ -405,7 +364,7 @@
   .rangebar .rbtn {
     padding: 3px 10px;
     font: inherit; font-size: 11px; font-weight: 600; letter-spacing: 0.03em;
-    color: #8d755d; background: rgba(255, 253, 246, 0.6);
+    color: #7d6749; background: rgba(255, 253, 246, 0.6);
     border: 1px solid rgba(120, 88, 56, 0.18);
     border-radius: 999px; cursor: pointer;
   }
@@ -431,7 +390,7 @@
     display: flex; align-items: baseline; gap: 10px;
     font-size: 11px; font-weight: 700; letter-spacing: 0.04em; color: #6b5442;
   }
-  .cpanel h5 .cl { margin-left: auto; display: flex; gap: 9px; font-size: 10px; font-weight: 600; color: #8d755d; }
+  .cpanel h5 .cl { margin-left: auto; display: flex; gap: 9px; font-size: 10px; font-weight: 600; color: #7d6749; }
   .cpanel h5 .cl i { display: inline-block; width: 7px; height: 3px; margin-right: 4px; border-radius: 2px; vertical-align: middle; }
   .cpanel canvas { display: block; width: 100%; height: auto; cursor: crosshair; }
 
@@ -529,7 +488,7 @@
   #dialogue-text { font-size: 15px; line-height: 1.7; color: #4b3a2c; letter-spacing: 0.02em; }
   #dialogue .tip {
     position: absolute; right: 16px; bottom: 9px;
-    font-size: 10.5px; color: #a7937a; letter-spacing: 0.08em;
+    font-size: 10.5px; color: #7d6749; letter-spacing: 0.08em;
   }
 
   /* ---------------- 即时反馈 ---------------- */
@@ -669,7 +628,6 @@
   </div>
 
   <div id="srv-labels"></div>
-  <div id="srv-card" class="srv-card"></div>
 
   <div id="prompt" class="hidden"><span class="key">E</span><span id="prompt-text">和露露聊聊</span></div>
   <div id="toast" class="hidden"></div>
@@ -691,6 +649,6 @@
   <script type="importmap">
     { "imports": { "three": "./vendor/three.module.js" } }
   </script>
-  <script type="module" src="./boot.js?v=1.8.8"></script>
+  <script type="module" src="./boot.js?v=1.8.9"></script>
 </body>
 </html>

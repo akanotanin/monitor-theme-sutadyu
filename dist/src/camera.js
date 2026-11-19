@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { MAP } from './config.js?v=1.8.8';
-import { clamp, damp } from './util.js?v=1.8.8';
+import { MAP } from './config.js?v=1.8.9';
+import { clamp, damp } from './util.js?v=1.8.9';
 
 /* ------------------------------------------------------------------ *
  * 斜俯视正交镜头：视野高 26，机位沿着 (27,32,27) 方向
@@ -37,9 +37,22 @@ export class TownCamera {
     this._apply();
   }
 
+  /** 钉住镜头（详情页打开时用）：update() 里的玩家坐标不再生效，直到 unpin() */
+  pin(x, z) {
+    this._pin = { x, z };
+  }
+
+  unpin() {
+    this._pin = null;
+  }
+
   update(dt, x, z, aheadX = 0, aheadZ = 0) {
-    const tx = clamp(x + aheadX, MAP.x1 + 9, MAP.x2 - 9);
-    const tz = clamp(z + aheadZ, MAP.z1 + 9, MAP.z2 - 9);
+    const px = this._pin ? this._pin.x : x + aheadX;
+    const pz = this._pin ? this._pin.z : z + aheadZ;
+    // 钉住时允许贴到地图边（详情页要看边上的机器），跟随时才留 9 格的余量
+    const margin = this._pin ? 2 : 9;
+    const tx = clamp(px, MAP.x1 + margin, MAP.x2 - margin);
+    const tz = clamp(pz, MAP.z1 + margin, MAP.z2 - margin);
     this.focus.x = damp(this.focus.x, tx, 4.8, dt);
     this.focus.z = damp(this.focus.z, tz, 4.8, dt);
     this._apply();

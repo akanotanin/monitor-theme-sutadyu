@@ -39,6 +39,18 @@ const METRICS_RETRY = 20_000;     // 没拿到 / 失败：20 s 后重试（别�
 const METRICS_CONCURRENCY = 4;    // 与 hub 的 HISTORY_GATE（4 个并发）对齐
 const FRESH_WINDOW = 600;         // 三网样本只需最近 10 分钟
 const WS_IDLE_MS = 10_000;        // 上游约定：10 s 没有帧就当断流，页面自己重连
+const FETCH_TIMEOUT = 12_000;     // 请求超时：反代卡住时别让页面永远等下去
+
+/** 带超时的 fetch（反代只建连不回包时，裸 fetch 会一直挂着） */
+async function fetchOk(url, ms = FETCH_TIMEOUT) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), ms);
+  try {
+    return await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json' }, signal: ac.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function pickStatus(node, memPct = null) {
   if (!node.online) return 'offline';
@@ -198,6 +210,7 @@ export class ServerFeed {
     this._retry = 0;
     this._closed = false;
     this._metricsInflight = new Set();
+    this._metricsRound = false;   // 上一轮三网刷新还没跑完（WS 每帧都会调，不能每帧再起一轮）
     this._lastFrame = 0;
     this._watch = null;
   }
@@ -269,22 +282,23 @@ export class ServerFeed {
    * 并发 4 个（hub 的 HISTORY_GATE 就是 4）——串行 40 台要 10 轮往返，首屏太慢。
    */
   async refreshMetrics(force = false) {
+    // 上游 HISTORY_GATE 只放 4 个并发；一轮没跑完时再开一轮会把并发推到 8/12，直接被 503 打回
+    if (this._metricsRound) return;
     const now = Date.now();
     const queue = force
       ? this.servers.filter((s) => s.status !== 'offline' && !this._metricsInflight.has(s.id))
       : this.servers.filter((s) => this._metricsDue(s, now));
     if (!queue.length) return;
 
+    this._metricsRound = true;
     let cursor = 0;
     const worker = async () => {
       while (cursor < queue.length) {
         const server = queue[cursor++];
         this._metricsInflight.add(server.id);
         try {
-          const res = await fetch(`/api/nodes/${server.nodeId}/metrics`, {
-            cache: 'no-store',
-            headers: { Accept: 'application/json' },
-          });
+          // 卡片只读延迟：series=ping 让 hub 跳过 metrics 那一半扫描（仍带 probes/loss）
+          const res = await fetchOk(`/api/nodes/${server.nodeId}/metrics?series=ping`);
           const target = this.servers.find((s) => s.id === server.id);
           if (!target) continue;
           target.carriersAt = Date.now();     // 失败也记一笔：别让每一帧都重打一遍
@@ -303,13 +317,17 @@ export class ServerFeed {
         }
       }
     };
-    await Promise.all(Array.from({ length: Math.min(METRICS_CONCURRENCY, queue.length) }, worker));
+    try {
+      await Promise.all(Array.from({ length: Math.min(METRICS_CONCURRENCY, queue.length) }, worker));
+    } finally {
+      this._metricsRound = false;
+    }
     this._emit();
   }
 
   async reload() {
     try {
-      const res = await fetch('/api/nodes', { cache: 'no-store', headers: { Accept: 'application/json' } });
+      const res = await fetchOk('/api/nodes');
       if (res.status === 401) {
         // 站点关了公开页：这不是「没有节点」，是「需要登录」
         this._setDenied(true);

@@ -50,29 +50,33 @@ function pickSettings(raw) {
   };
 }
 
-/** 站名 + 历史保留天数：hub 的 /api/me 会给（站名只在拿不到时回退），历史天数给详情页生成时间档位 */
-async function loadMe() {
+/**
+ * 带超时的 GET：反代只建连不回包时，裸 fetch 会一直挂着——boot 卡在这里就等于整页空白，
+ * 所以这两个请求都必须自己收尾（超时/失败都退回默认值，主模块照常加载）。
+ */
+async function getJson(url, ms = 8000) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), ms);
   try {
-    const res = await fetch('/api/me', { cache: 'no-store', headers: { Accept: 'application/json' } });
+    const res = await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json' }, signal: ac.signal });
     if (!res.ok) return null;
-    const json = await res.json();
-    return json && typeof json === 'object' ? json : null;
+    return await res.json();
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
+/** 站名 + 历史保留天数：hub 的 /api/me 会给（站名只在拿不到时回退），历史天数给详情页生成时间档位 */
+async function loadMe() {
+  const json = await getJson('/api/me');
+  return json && typeof json === 'object' ? json : null;
+}
+
 async function loadConfig() {
-  try {
-    const res = await fetch(`/api/themes/${SHORT}/config`, {
-      cache: 'no-store',
-      headers: { Accept: 'application/json' },
-    });
-    if (!res.ok) return { ...DEFAULTS };
-    return pickSettings(await res.json());
-  } catch {
-    return { ...DEFAULTS };
-  }
+  const raw = await getJson(`/api/themes/${SHORT}/config`);
+  return raw ? pickSettings(raw) : { ...DEFAULTS };
 }
 
 const [config, me] = await Promise.all([loadConfig(), loadMe()]);
@@ -112,4 +116,4 @@ window.__SUTADYU_BOOT_READY__ = reveal;
 // 兜底：主模块异常时最多 5 秒也揭幕，不会永远停在奶油色幕布
 setTimeout(reveal, 5000);
 
-await import('./src/main.js?v=1.8.8');
+await import('./src/main.js?v=1.8.9');

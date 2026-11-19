@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { STATUS } from './hub.js?v=1.8.8';
+import { STATUS } from './hub.js?v=1.8.9';
 
 /* ------------------------------------------------------------------ *
  * 探针界面：右上角概况条、小鸡头顶名牌、右侧服务器详情卡
@@ -19,7 +19,6 @@ export class ProbeUI {
     this.bar = document.getElementById('probe-bar');
     this.barStatus = this.bar?.querySelector('.probe-status') ?? null;
     this.barTime = this.bar?.querySelector('.probe-time') ?? null;
-    this.card = document.getElementById('srv-card');
     this.labelLayer = document.getElementById('srv-labels');
     this.labels = new Map();
     this._v = new THREE.Vector3();
@@ -30,10 +29,6 @@ export class ProbeUI {
     this.focusedId = null;
     this.denied = false;
     if (this.labelLayer) this.labelLayer.style.display = 'none';
-
-    if (this.card) {
-      this.card.querySelector('.srv-close')?.addEventListener('click', () => this.hideDetail());
-    }
   }
 
   setSummary(summary, updatedAt) {
@@ -148,10 +143,5 @@ export class ProbeUI {
 
   hideDetail() {
     this.current = null;
-    this.card?.classList.remove('show');
-  }
-
-  get open() {
-    return !!this.card?.classList.contains('show');
   }
 }

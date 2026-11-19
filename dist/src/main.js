@@ -1,17 +1,17 @@
 import * as THREE from 'three';
-import { TownCamera } from './camera.js?v=1.8.8';
-import { buildWorld } from './world.js?v=1.8.8';
-import { Player } from './player.js?v=1.8.8';
-import { InteractionManager } from './interact.js?v=1.8.8';
-import { ui } from './ui.js?v=1.8.8';
-import { clamp } from './util.js?v=1.8.8';
-import { debugColliderCount, isWalkable, groundHeight } from './collision.js?v=1.8.8';
-import { isInRiver, LAYOUT } from './config.js?v=1.8.8';
-import { ServerFeed } from './hub.js?v=1.8.8';
-import { ChickenHerd } from './chickens.js?v=1.8.8';
-import { ProbeUI } from './probeui.js?v=1.8.8';
-import { ServerCards } from './cards.js?v=1.8.8';
-import { ProbePanel } from './panel.js?v=1.8.8';
+import { TownCamera } from './camera.js?v=1.8.9';
+import { buildWorld } from './world.js?v=1.8.9';
+import { Player } from './player.js?v=1.8.9';
+import { InteractionManager } from './interact.js?v=1.8.9';
+import { ui } from './ui.js?v=1.8.9';
+import { clamp } from './util.js?v=1.8.9';
+import { debugColliderCount, isWalkable, groundHeight } from './collision.js?v=1.8.9';
+import { isInRiver, LAYOUT } from './config.js?v=1.8.9';
+import { ServerFeed } from './hub.js?v=1.8.9';
+import { ChickenHerd } from './chickens.js?v=1.8.9';
+import { ProbeUI } from './probeui.js?v=1.8.9';
+import { ServerCards } from './cards.js?v=1.8.9';
+import { ProbePanel } from './panel.js?v=1.8.9';
 
 /* ------------------------------------------------------------------ *
  * 渲染器 / 场景 / 光照 —— 统一在这里初始化
@@ -41,8 +41,8 @@ renderer.toneMappingExposure = 1.08;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#dfe5d8');
-// 雾与阴影范围跟着小镇一起放大，否则地图边角会被雾吃掉、阴影只盖住中心
-scene.fog = new THREE.Fog('#dfe5d8', 48 * LAYOUT, 100 * LAYOUT);
+// 雾是「相机深度」的事，相机没放大 → 近端保持 48；远端随地图放大留一点余量（阴影范围另算）
+scene.fog = new THREE.Fog('#dfe5d8', 48, 100 + 10 * (LAYOUT - 1));
 
 const hemi = new THREE.HemisphereLight('#fff0dc', '#536f78', 1.65);
 scene.add(hemi);
@@ -150,31 +150,44 @@ let pointerIn = false;
 let hovered = null;
 const canvasEl = renderer.domElement;
 window.addEventListener('pointermove', (e) => {
-  pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
-  pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  setPointerFromEvent(e);
   pointerIn = true;
 });
 canvasEl.addEventListener('pointerleave', () => { pointerIn = false; });
-canvasEl.addEventListener('pointerdown', () => {
-  if (!hovered) return;
-  panel.showDetailDirect(hovered.server);
-  probeUI.showDetail(hovered.server);
+/** 当前指针位置下命中的那只小鸡（鼠标与触屏共用） */
+function pickFromPointer() {
+  if (!herd.items.length) return null;
+  raycaster.setFromCamera(pointer, camRig.camera);
+  const hits = raycaster.intersectObjects(herd.group.children, true);
+  for (const hit of hits) {
+    let o = hit.object;
+    while (o && !o.userData.serverId) o = o.parent;
+    if (o?.userData.serverId) return herd.items.find((i) => i.server.id === o.userData.serverId) || null;
+  }
+  return null;
+}
+
+function setPointerFromEvent(e) {
+  pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
+  pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+}
+
+canvasEl.addEventListener('pointerdown', (e) => {
+  // 触屏点按只有 down/up、没有 move：这里必须自己拾取，不能等 hovered
+  setPointerFromEvent(e);
+  const hit = pickFromPointer();
+  if (!hit) return;
+  if (hit !== hovered) {
+    herd.setHighlight(hovered, false);
+    hovered = hit;
+    herd.setHighlight(hit, true);
+  }
+  panel.showDetailDirect(hit.server);
+  probeUI.showDetail(hit.server);
 });
 
 function updateHover() {
-  let next = null;
-  if (pointerIn && herd.items.length) {
-    raycaster.setFromCamera(pointer, camRig.camera);
-    const hits = raycaster.intersectObjects(herd.group.children, true);
-    for (const hit of hits) {
-      let o = hit.object;
-      while (o && !o.userData.serverId) o = o.parent;
-      if (o?.userData.serverId) {
-        next = herd.items.find((i) => i.server.id === o.userData.serverId) || null;
-        break;
-      }
-    }
-  }
+  const next = pointerIn ? pickFromPointer() : null;
   if (next !== hovered) {
     herd.setHighlight(hovered, false);
     herd.setHighlight(next, true);
@@ -191,13 +204,14 @@ const keys = Object.create(null);
 const BLOCK = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyE', 'Tab']);
 
 window.addEventListener('keydown', (e) => {
-  // 面板内部放行 Tab：键盘用户要能走到「返回 / 关闭 / 页签 / 时间档」
-  const tabInsidePanel = e.code === 'Tab' && !!panel.root?.contains(document.activeElement);
-  if (BLOCK.has(e.code) && !tabInsidePanel) e.preventDefault();
+  // 面板内部放行 Tab 与 Space：键盘用户要能走到「返回 / 关闭 / 页签 / 时间档」，并真的按下去
+  const insidePanel = !!panel.root?.contains(document.activeElement);
+  const passthrough = insidePanel && (e.code === 'Tab' || e.code === 'Space');
+  if (BLOCK.has(e.code) && !passthrough) e.preventDefault();
   keys[e.code] = true;
   if (e.repeat) return;
   if (e.code === 'Tab') {
-    if (tabInsidePanel) return;
+    if (insidePanel) return;
     panel.toggle();
     return;
   }
@@ -333,13 +347,20 @@ function frame(now) {
 
   const aheadX = clamp(player.vel.x * 0.25, -1.5, 1.5);
   const aheadZ = clamp(player.vel.z * 0.25, -1.5, 1.5);
+  // 面板停在某台机器的详情页时，镜头钉在它身上（README 承诺「镜头同时带到那台机器」）
+  const lockItem = panel.open && panel.view === 'detail' && panel.selectedId
+    ? herd.items.find((i) => i.server.id === panel.selectedId)
+    : null;
+  if (lockItem) camRig.pin(lockItem.pos.x, lockItem.pos.z);
+  else camRig.unpin();
   camRig.update(dt, player.pos.x, player.pos.z, aheadX, aheadZ);
 
   interaction.update(camRig.camera, player.pos, window.innerWidth, window.innerHeight, true);
   world.update(dt, elapsed, player.pos);
   herd.update(dt, elapsed, player.pos);
+  // 交互对象自己带 serverId：按名字子串反查会在 web / web-2 这种前缀名上认错鸡
   const prompted = interaction.current && interaction.current.kind === 'server'
-    ? herd.items.find((i) => i.server.name && interaction.current.prompt.includes(i.server.name))?.server.id ?? null
+    ? interaction.current.serverId ?? null
     : null;
   // 名牌交给 3D 卡片层；这里只同步「当前提示的是哪只鸡」，供卡片让位
   probeUI.setFocused(hovered ? hovered.server.id : null, prompted);
@@ -471,6 +492,7 @@ const api = {
     camRig.resize(window.innerWidth / window.innerHeight);
   },
   cards: serverCards,
+  panel,          // 验收/调试：直接驱动列表（模拟 WS 推送、检查节点复用）
 };
 window.__TOWN__ = api;
 

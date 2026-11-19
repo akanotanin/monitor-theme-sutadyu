@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { STATUS } from './hub.js?v=1.8.8';
+import { STATUS } from './hub.js?v=1.8.9';
 
 /* ------------------------------------------------------------------ *
  * 小鸡头顶的信息卡（纸卡风），两档：
@@ -511,10 +511,16 @@ export class ServerCards {
    */
   update(items, playerPos, focusedId = null, dt = 1 / 60, camera = null) {
     const K = REDUCE_MOTION ? 1 : 1 - Math.exp(-dt * FADE_RATE);   // 一阶平滑：约 0.9s 到位（放慢一档，切换更丝滑）
+    // 间距判定用的位置走一层低通：小鸡会自己溜达，拿实时坐标判会逐帧翻牌（一会儿出卡一会儿变点），
+    // 拿窝点判又管不住「两只鸡走到一起」——低通（约 1.8 s 跟上）两头都照顾到
+    const KSLOW = 1 - Math.exp(-dt * 0.55);
     const seen = [];
     for (const item of items) {
       const card = this.cards.get(item.server.id);
       if (!card) continue;
+      if (card.sx === undefined) { card.sx = item.pos.x; card.sz = item.pos.z; }
+      card.sx += (item.pos.x - card.sx) * KSLOW;
+      card.sz += (item.pos.z - card.sz) * KSLOW;
       seen.push({ item, card, d: Math.hypot(playerPos.x - item.pos.x, playerPos.z - item.pos.z) });
     }
     seen.sort((a, b) => a.d - b.d);
@@ -532,14 +538,12 @@ export class ServerCards {
     let allowed = null;
     if (this.enabled && this.mode === 'always') {
       allowed = new Set();
-      // 间距判定用「槽位中心」而不是当下的走位：小鸡会自己溜达 ±1.6，
-      // 拿实时坐标判会让卡片在阈值上来回翻（一会儿出卡一会儿变点）。
-      const at = (it) => it.slotHome || it.home || it.pos;
+      const at = (card) => ({ x: card.sx, z: card.sz });
       const accepted = [];
       // 小站点也必须过一遍间距检查：默认配置下最近的两只鸡只隔 3.4，卡片会叠掉 44%
       const focusedEntry = focusedId ? seen.find((x) => x.item.server.id === focusedId) : null;
       if (focusedEntry) {
-        const h = at(focusedEntry.item);
+        const h = at(focusedEntry.card);
         allowed.add(focusedId);
         accepted.push({ x: h.x, z: h.z });
       }
@@ -548,7 +552,7 @@ export class ServerCards {
         if (allowed.size >= budget + 2) break;
         const sid = item.server.id;
         if (allowed.has(sid) || !card.wasAllowed) continue;
-        const h = at(item);
+        const h = at(card);
         let clash = false;
         for (const a of accepted) {
           if (Math.hypot(a.x - h.x, a.z - h.z) < KEEP_GAP) { clash = true; break; }
@@ -558,11 +562,11 @@ export class ServerCards {
         accepted.push({ x: h.x, z: h.z });
       }
       // 2) 补位：新卡按严格间距进
-      for (const { item } of seen) {
+      for (const { item, card } of seen) {
         if (allowed.size >= budget) break;
         const sid = item.server.id;
         if (allowed.has(sid)) continue;
-        const h = at(item);
+        const h = at(card);
         let clash = false;
         for (const a of accepted) {
           if (Math.hypot(a.x - h.x, a.z - h.z) < CARD_MIN_GAP) { clash = true; break; }
@@ -651,6 +655,7 @@ export class ServerCards {
 
       // 收起后留一颗状态点，那只鸡头顶不至于空着
       const dotOpEff = Math.max(card.dotOp, card.clipped ? card.op : 0);
+      card.dotEff = dotOpEff;
       card.dot.position.set(item.pos.x, item.height + 0.75, item.pos.z);
       card.dot.material.opacity = dotOpEff * (offline ? 0.7 : 1);
       card.dot.visible = dotOpEff > 0.02;
@@ -670,7 +675,7 @@ export class ServerCards {
         if (c.tier === 'full') full++;
         else compact++;
       }
-      if (c.dot.visible && c.dotOp > 0.5) dots++;
+      if (c.dot.visible && (c.dotEff ?? c.dotOp) > 0.5) dots++;
     }
     return { mode: this.mode, enabled: this.enabled, total: this.cards.size, visible, full, compact, dots, budget: this._budget || 0 };
   }

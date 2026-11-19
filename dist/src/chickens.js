@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import { MeshBatch } from './util.js?v=1.8.8';
-import { STATUS } from './hub.js?v=1.8.8';
-import { isWalkable } from './collision.js?v=1.8.8';
+import { MeshBatch } from './util.js?v=1.8.9';
+import { STATUS } from './hub.js?v=1.8.9';
+import { isWalkable } from './collision.js?v=1.8.9';
+import { MAP } from './config.js?v=1.8.9';
 
 /* ------------------------------------------------------------------ *
  * 探针小鸡：一只鸡 = 一台服务器
@@ -30,13 +31,10 @@ export const CHICKEN_SLOTS = [
   { x: -1.4, z: 16.6, r: 1.6 },   // 菜园门口的土路旁
   { x: 7.2, z: 6.8, r: 1.5 },     // 河边草地（桥西）
   { x: 16.8, z: -9.0, r: 1.5 },   // 桥东土路旁
-  { x: 25.2, z: -15.8, r: 1.6 },  // 东南树林边
-  { x: 16.2, z: 7.4, r: 1.6 },    // 野餐草地旁
-  { x: 25.2, z: 2.6, r: 1.4 },    // 东边林间
+  { x: 22.7, z: -15.3, r: 1.6 },  // 东南树林边
+  { x: 16.2, z: 5.9, r: 1.6 },    // 野餐草地旁
+  { x: 23.25, z: 0, r: 1.4 },     // 东边林间（1.8.7 重铺后原 25.2/2.6 落在树里）
 ];
-
-/** 两个落脚点的间距下限：离太近会连人带卡糊成一团 */
-const SLOT_MIN_GAP = 2.1;
 
 /**
  * 按服务器数量备好落脚点：前 10 个是手工点位；超出的在**整张地图**里做
@@ -58,8 +56,9 @@ function buildSlots(count) {
     let best = null;
     let bestD = -1;
     for (let t = 0; t < CAND; t++) {
-      const x = -19 + rand() * 39;        // 全图范围（比 MAP 略收一点）
-      const z = -16 + rand() * 32;
+      // 候选框从当前地图推：1.8.7 把镇子放大后，写死的 ±19/±16 只盖住中间 70%×66%
+      const x = MAP.x1 + 1.4 + rand() * (MAP.x2 - MAP.x1 - 2.8);
+      const z = MAP.z1 + 1.4 + rand() * (MAP.z2 - MAP.z1 - 2.8);
       if (!isWalkable(x, z, 0.85)) continue;   // 留足净空：漫游半径内别撞墙/进水
       let dmin = Infinity;
       for (const s of slots) {
@@ -265,6 +264,7 @@ export class ChickenHerd {
 
     const interactable = {
       kind: 'server',
+      serverId: server.id,
       x, z,
       anchorY: 1.02,
       radius: 1.7,
@@ -285,7 +285,7 @@ export class ChickenHerd {
       ring: body.ring,
       height: body.height,
       home: { x, z },              // 出生点（带抖动）：遛弯围着它转
-      slotHome: { x: slot.x, z: slot.z },  // 槽位中心：头顶卡片「谁出卡」的判定基准，不随走动抖动
+      slotHome: { x: slot.x, z: slot.z },  // 分配到的槽位中心（调试/验收读）
       radius: slot.r,
       pos: { x, z },
       target: { x, z },

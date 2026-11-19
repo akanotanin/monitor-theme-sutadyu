@@ -2,7 +2,7 @@
   "name": "sutadyu",
   "short": "sutadyu",
   "description": "星露谷式小镇探针主题：每台服务器一只小鸡；Tab 打开探针列表，点卡片看九格信息与资源/延迟折线图。",
-  "version": "1.8.8",
+  "version": "1.8.9",
   "author": "akanotanin",
   "url": "https://github.com/akanotanin/monitor-theme-sutadyu",
   "config": [

@@ -1,5 +1,5 @@
-import { STATUS } from './hub.js?v=1.8.8';
-import { drawLine, PALETTE, fmtBytes, axisTime } from './charts.js?v=1.8.8';
+import { STATUS } from './hub.js?v=1.8.9';
+import { drawLine, PALETTE, fmtBytes, axisTime } from './charts.js?v=1.8.9';
 
 /** 详情图表缓存的有效期：只为「同一视图里来回切页签/档位」服务，不作长期缓存 */
 const DETAIL_CACHE_TTL = 60_000;
@@ -196,6 +196,15 @@ export class ProbePanel {
     this.chartHandles = [];
 
     this.backBtn?.addEventListener('click', () => this.showList());
+    // 事件委托：卡片节点会按 id 复用，逐个挂监听会在重建时丢掉
+    this.bodyEl?.addEventListener('click', (ev) => {
+      const card = ev.target?.closest?.('.pp-card');
+      if (!card || !this.bodyEl.contains(card)) return;
+      const srv = this.servers.find((s) => s.id === card.dataset.id);
+      if (!srv) return;
+      this.showDetail(srv);
+      this.onPick?.(srv);
+    });
     this.closeBtn?.addEventListener('click', () => this.hide());
     this.root?.addEventListener('click', (ev) => {
       if (ev.target === this.root) this.hide();
@@ -236,17 +245,35 @@ export class ProbePanel {
         ? '本站未对访客开放'
         : `共 <b>${total}</b> 台 · 在线 <b>${online}</b>${avg !== null ? ` · 平均延迟 <b>${avg} ms</b>` : ''}`;
     }
-    this.bodyEl.innerHTML = this.denied
-      ? '<div class="pd-empty">本站未对访客开放<br>请登录后台查看（右上角 ⚙ 后台）</div>'
-      : this.servers.map(cardHtml).join('') || '<div class="pd-empty">暂无节点</div>';
-    this.bodyEl.querySelectorAll('.pp-card').forEach((card) => {
-      card.addEventListener('click', () => {
-        const srv = this.servers.find((s) => s.id === card.dataset.id);
-        if (!srv) return;
-        this.showDetail(srv);
-        this.onPick?.(srv);
-      });
+    if (this.denied) {
+      this.bodyEl.innerHTML = '<div class="pd-empty">本站未对访客开放<br>请登录后台查看（右上角 ⚙ 后台）</div>';
+      return;
+    }
+    if (!this.servers.length) {
+      this.bodyEl.innerHTML = '<div class="pd-empty">暂无节点</div>';
+      return;
+    }
+    // 按 id 复用卡片节点：WS 每 2 s 推一帧，全量重写会把滚动位置、悬停态和键盘焦点一起冲掉。
+    // 内容没变的卡片原样搬回来（移动节点不会重建），变了的只换那一张。
+    const existing = new Map();
+    for (const el of [...this.bodyEl.children]) {
+      if (el.classList?.contains('pp-card')) existing.set(el.dataset.id, el);
+    }
+    const nodes = this.servers.map((srv) => {
+      const html = cardHtml(srv);
+      const old = existing.get(srv.id);
+      if (old && old.__html === html) return old;
+      const box = document.createElement('div');
+      box.innerHTML = html;
+      const node = box.firstElementChild;
+      node.__html = html;
+      if (old && old === document.activeElement) node.focus({ preventScroll: true });
+      return node;
     });
+    // 节点全都没变就别动 DOM：replaceChildren 会先摘后插，焦点会被摘掉
+    const cur = this.bodyEl.children;
+    const same = cur.length === nodes.length && nodes.every((n, i) => cur[i] === n);
+    if (!same) this.bodyEl.replaceChildren(...nodes);
   }
 
   showList() {
