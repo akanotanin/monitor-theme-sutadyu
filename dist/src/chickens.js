@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { MeshBatch } from './util.js?v=1.8.12';
-import { STATUS } from './hub.js?v=1.8.12';
-import { isWalkable } from './collision.js?v=1.8.12';
-import { MAP } from './config.js?v=1.8.12';
+import { MeshBatch } from './util.js?v=1.8.13';
+import { STATUS } from './hub.js?v=1.8.13';
+import { isWalkable } from './collision.js?v=1.8.13';
+import { MAP } from './config.js?v=1.8.13';
 
 /* ------------------------------------------------------------------ *
  * 探针小鸡：一只鸡 = 一台服务器
@@ -224,6 +224,12 @@ export class ChickenHerd {
 
   /** 与服务器列表同步：新来的生一只鸡，消失的收走 */
   sync(servers) {
+    // 槽位表一次建够：只靠 _takeSlot 里的按需重建，首帧会跑 buildSlots(10)+buildSlots(11)+…+buildSlots(N)，
+    // 成本 O(N²)（实测 100 台 0.5 s、200 台 3.3 s 主线程冻结，且全部发生在首帧之前）。
+    // buildSlots 的前缀是稳定的，一次建到 N 与逐个追加得到的前 N 个点位完全相同。
+    if (!this._slots || this._slots.length < servers.length) {
+      this._slots = buildSlots(Math.max(servers.length, CHICKEN_SLOTS.length));
+    }
     const seen = new Set();
     servers.forEach((server) => {
       seen.add(server.id);

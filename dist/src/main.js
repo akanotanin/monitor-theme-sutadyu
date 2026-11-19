@@ -1,17 +1,17 @@
 import * as THREE from 'three';
-import { TownCamera } from './camera.js?v=1.8.12';
-import { buildWorld } from './world.js?v=1.8.12';
-import { Player } from './player.js?v=1.8.12';
-import { InteractionManager } from './interact.js?v=1.8.12';
-import { ui } from './ui.js?v=1.8.12';
-import { clamp } from './util.js?v=1.8.12';
-import { debugColliderCount, isWalkable, groundHeight } from './collision.js?v=1.8.12';
-import { isInRiver, LAYOUT } from './config.js?v=1.8.12';
-import { ServerFeed } from './hub.js?v=1.8.12';
-import { ChickenHerd } from './chickens.js?v=1.8.12';
-import { ProbeUI } from './probeui.js?v=1.8.12';
-import { ServerCards } from './cards.js?v=1.8.12';
-import { ProbePanel } from './panel.js?v=1.8.12';
+import { TownCamera } from './camera.js?v=1.8.13';
+import { buildWorld } from './world.js?v=1.8.13';
+import { Player } from './player.js?v=1.8.13';
+import { InteractionManager } from './interact.js?v=1.8.13';
+import { ui } from './ui.js?v=1.8.13';
+import { clamp } from './util.js?v=1.8.13';
+import { debugColliderCount, isWalkable, groundHeight } from './collision.js?v=1.8.13';
+import { isInRiver, LAYOUT } from './config.js?v=1.8.13';
+import { ServerFeed } from './hub.js?v=1.8.13';
+import { ChickenHerd } from './chickens.js?v=1.8.13';
+import { ProbeUI } from './probeui.js?v=1.8.13';
+import { ServerCards } from './cards.js?v=1.8.13';
+import { ProbePanel } from './panel.js?v=1.8.13';
 
 /* ------------------------------------------------------------------ *
  * 渲染器 / 场景 / 光照 —— 统一在这里初始化
@@ -91,8 +91,14 @@ const serverCards = new ServerCards(scene);
 serverCards.setMode(CARD_MODE);
 const panel = new ProbePanel();
 const feed = new ServerFeed();
+// 打开面板时让主循环强制刷一轮三网（用户想看「现在」的延迟；冷却 30 s 防反复开关）
+panel.onOpen = () => feed.refreshMetrics(true);
+let herdSyncMs = 0;   // 最近一次 herd.sync 的耗时：验收量首帧建镇成本用
 feed.onChange((servers, updatedAt) => {
+  const t0 = performance.now();
   herd.sync(servers);
+  // 取最大值：WS 每 2 s 一帧都会刷新它，只有首帧那次才带 buildSlots 的成本
+  herdSyncMs = Math.max(herdSyncMs, performance.now() - t0);
   probeUI.setSummary(feed.summary, updatedAt);
   serverCards.sync(servers);
   panel.setServers(servers);
@@ -420,6 +426,7 @@ const api = {
       servers: feed.servers.length,
       online: feed.summary.online,
       chickens: herd.items.length,
+      herdSyncMs: +herdSyncMs.toFixed(1),
       chickenList: herd.items.map((i) => ({
         id: i.server.id, name: i.server.name, x: +i.pos.x.toFixed(2), z: +i.pos.z.toFixed(2),
         // 槽位中心（不走位）：验收要量「落脚点够不够散」，实时坐标会被溜达糊掉

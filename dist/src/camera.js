@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { MAP } from './config.js?v=1.8.12';
-import { clamp, damp } from './util.js?v=1.8.12';
+import { MAP } from './config.js?v=1.8.13';
+import { clamp, damp } from './util.js?v=1.8.13';
 
 /* ------------------------------------------------------------------ *
  * 斜俯视正交镜头：视野高 26，机位沿着 (27,32,27) 方向

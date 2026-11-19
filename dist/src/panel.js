@@ -1,5 +1,5 @@
-import { STATUS } from './hub.js?v=1.8.12';
-import { drawLine, PALETTE, fmtBytes, axisTime } from './charts.js?v=1.8.12';
+import { STATUS } from './hub.js?v=1.8.13';
+import { drawLine, PALETTE, fmtBytes, axisTime } from './charts.js?v=1.8.13';
 
 /** 详情图表缓存的有效期：只为「同一视图里来回切页签/档位」服务，不作长期缓存 */
 const DETAIL_CACHE_TTL = 60_000;
@@ -186,6 +186,7 @@ export class ProbePanel {
     this.servers = [];
     this.selectedId = null;
     this.onPick = null;
+    this.onOpen = null;   // 面板被打开时通知外面（强制刷一轮三网）
 
     // 详情页状态
     this.nodeTab = 'res'; // res | lat
@@ -538,6 +539,8 @@ export class ProbePanel {
     this.open = true;
     this.showList();
     this._takeFocus();
+    // 打开面板 = 用户想看「现在」的数据：让主循环强制刷一轮三网（有 30 s 冷却，见 hub.js）
+    this.onOpen?.();
   }
 
   /** 直接打开某台机器的详情（从 3D 里点小鸡 / 按 E） */

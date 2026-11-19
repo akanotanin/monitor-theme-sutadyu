@@ -40,6 +40,7 @@ const METRICS_CONCURRENCY = 4;    // 与 hub 的 HISTORY_GATE（4 个并发）�
 const FRESH_WINDOW = 600;         // 三网样本只需最近 10 分钟
 const WS_IDLE_MS = 10_000;        // 上游约定：10 s 没有帧就当断流，页面自己重连
 const FETCH_TIMEOUT = 12_000;     // 请求超时：反代卡住时别让页面永远等下去
+const FORCE_COOLDOWN = 30_000;    // 「强制刷新」的冷却：反复开关面板别把全表重拉一遍
 
 /**
  * 带超时的 GET + 读 body。超时必须罩住「读到 body 为止」——
@@ -233,6 +234,7 @@ export class ServerFeed {
     this._metricsInflight = new Set();
     this._metricsRound = false;   // 上一轮三网刷新还没跑完（WS 每帧都会调，不能每帧再起一轮）
     this._metricsForcePending = false; // 轮次进行中被点「强制刷新」：记下来，跑完立刻补一轮
+    this._lastForceAt = 0;            // 上一次强制刷新真正开跑的时间（30 s 冷却）
     this._lastFrame = 0;
     this._watch = null;
   }
@@ -303,18 +305,22 @@ export class ServerFeed {
    * 拉三网延迟：只在「确实过期」时取（每个 WS 推送都会调到这里）。
    * 并发 4 个（hub 的 HISTORY_GATE 就是 4）——串行 40 台要 10 轮往返，首屏太慢。
    */
-  async refreshMetrics(force = false) {
+  async refreshMetrics(force = false, fromQueue = false) {
+    const now = Date.now();
+    // 「强制刷新」现在有了真实入口（打开探针列表）：30 s 内只放一次，免得反复开关面板把全表重拉
+    // fromQueue = 本轮结束后补跑的那一次，属于同一个请求，不再受冷却限制
+    if (force && !fromQueue && now - this._lastForceAt < FORCE_COOLDOWN) force = false;
     // 上游 HISTORY_GATE 只放 4 个并发；一轮没跑完时再开一轮会把并发推到 8/12，直接被 503 打回
     if (this._metricsRound) {
       // 但「强制刷新」不能像以前那样静默丢掉：记一笔，本轮跑完立刻补跑
       if (force) this._metricsForcePending = true;
       return;
     }
-    const now = Date.now();
     const queue = force
       ? this.servers.filter((s) => s.status !== 'offline' && !this._metricsInflight.has(s.id))
       : this.servers.filter((s) => this._metricsDue(s, now));
     if (!queue.length) return;
+    if (force) this._lastForceAt = now;
 
     this._metricsRound = true;
     let cursor = 0;
@@ -351,7 +357,7 @@ export class ServerFeed {
     this._emit();
     if (this._metricsForcePending) {
       this._metricsForcePending = false;
-      this.refreshMetrics(true);
+      this.refreshMetrics(true, true);
     }
   }
 

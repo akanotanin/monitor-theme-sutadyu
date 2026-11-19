@@ -116,4 +116,4 @@ window.__SUTADYU_BOOT_READY__ = reveal;
 // 兜底：主模块异常时最多 5 秒也揭幕，不会永远停在奶油色幕布
 setTimeout(reveal, 5000);
 
-await import('./src/main.js?v=1.8.12');
+await import('./src/main.js?v=1.8.13');
