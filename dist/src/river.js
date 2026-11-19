@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { MeshBatch, mulberry32 } from './util.js?v=1.8.6';
-import { C, RIVER, BRIDGE } from './config.js?v=1.8.6';
-import { addRectCollider, addRectColliderMinMax } from './collision.js?v=1.8.6';
+import { MeshBatch, mulberry32 } from './util.js?v=1.8.7';
+import { C, MAP, RIVER, BRIDGE } from './config.js?v=1.8.7';
+import { addRectCollider, addRectColliderMinMax } from './collision.js?v=1.8.7';
 
 /* ------------------------------------------------------------------ *
  * 溪流 + 木桥 + 河边的石头、芦苇、睡莲、小鸭
@@ -43,7 +43,7 @@ const WATER_FRAG = /* glsl */ `
 `;
 
 function buildWater() {
-  const geo = new THREE.PlaneGeometry(RIVER.halfWidth * 2 + 0.04, 38, 8, 90);
+  const geo = new THREE.PlaneGeometry(RIVER.halfWidth * 2 + 0.04, MAP.z2 - MAP.z1 + 1.8, 8, 90);
   geo.rotateX(-Math.PI / 2);
   const mat = new THREE.ShaderMaterial({
     uniforms: { uTime: { value: 0 } },
@@ -62,42 +62,50 @@ function buildWater() {
 function buildBridge(batch) {
   const { x1, x2, z1, z2 } = BRIDGE;
   const deckY = 0.23;
+  const cx = (x1 + x2) / 2;
+  const half = (x2 - x1) / 2;
   // 桥面木板
   for (let x = x1; x <= x2 + 0.01; x += 0.42) {
     batch.addBox(x, deckY, 0, 0.38, 0.18, 3.08, C.woodLight[Math.floor(Math.abs(x * 7) % 3)]);
     batch.addBox(x, 0.325, z1 + 0.42, 0.07, 0.025, 0.07, 0x675441);
     batch.addBox(x, 0.325, z2 - 0.42, 0.07, 0.025, 0.07, 0x675441);
   }
-  // 两侧栏杆
+  // 两侧栏杆（跟着桥长走，别写死）
   for (const s of [-1, 1]) {
     const z = s * 1.55;
-    batch.addBox(9, 0.76, z, 4.95, 0.16, 0.16, C.woodDark);
-    batch.addBox(9, 1.17, z, 4.95, 0.14, 0.14, C.woodMid);
-    for (let x = 6.65; x <= 11.45; x += 1.18) {
+    batch.addBox(cx, 0.76, z, half * 2 + 0.25, 0.16, 0.16, C.woodDark);
+    batch.addBox(cx, 1.17, z, half * 2 + 0.25, 0.14, 0.14, C.woodMid);
+    for (let x = x1; x <= x2 + 0.1; x += 1.18) {
       batch.addBox(x, 0.75, z, 0.2, 1.28, 0.2, 0x6f533b);
       batch.addBox(x, 1.43, z, 0.29, 0.13, 0.29, 0xb58c57);
     }
-    addRectColliderMinMax(9 - 2.5, z - 0.16, 9 + 2.5, z + 0.16);
+    addRectColliderMinMax(x1 - 0.1, z - 0.16, x2 + 0.1, z + 0.16);
   }
   // 桥头踏石
-  batch.addBox(6.42, 0.11, 0, 0.48, 0.17, 2.9, 0xb69a6f);
-  batch.addBox(11.58, 0.11, 0, 0.48, 0.17, 2.9, 0xb69a6f);
+  batch.addBox(x1 - 0.23, 0.11, 0, 0.48, 0.17, 2.9, 0xb69a6f);
+  batch.addBox(x2 + 0.23, 0.11, 0, 0.48, 0.17, 2.9, 0xb69a6f);
 }
 
 /** 河岸边的小石头、芦苇、睡莲 */
 function buildBanks(batch, rng) {
-  for (let z = -18.5; z <= 18.5; z += 1) {
-    batch.addBox(7.03, -0.13, z, 0.42, 0.42, 0.96, C.bankStone[Math.floor(rng() * 3)]);
-    batch.addBox(10.97, -0.13, z, 0.42, 0.42, 0.96, C.bankStone[Math.floor(rng() * 3)]);
+  const bankL = RIVER.centerX - RIVER.halfWidth - 0.12;   // 岸石贴在水边
+  const bankR = RIVER.centerX + RIVER.halfWidth + 0.12;
+  for (let z = MAP.z1 - 0.4; z <= MAP.z2 + 0.4; z += 1) {
+    batch.addBox(bankL, -0.13, z, 0.42, 0.42, 0.96, C.bankStone[Math.floor(rng() * 3)]);
+    batch.addBox(bankR, -0.13, z, 0.42, 0.42, 0.96, C.bankStone[Math.floor(rng() * 3)]);
     if (Math.abs(z) > 2.1 && rng() < 0.42) {
-      const x = rng() > 0.5 ? 6.78 : 11.22;
+      const x = rng() > 0.5 ? bankL - 0.25 : bankR + 0.25;
       batch.addBox(x, 0.22, z, 0.08, 0.58 + rng() * 0.3, 0.08, 0x698553);
       batch.addBox(x + 0.13, 0.14, z + 0.14, 0.07, 0.4, 0.07, 0x809b57);
       batch.addBox(x, 0.52, z, 0.13, 0.27, 0.13, 0x96704c);
     }
   }
-  // 水边的睡莲
-  for (const [x, z] of [[8.15, -5.5], [9.65, 4.2], [8.35, 11.8], [9.75, -12.4]]) {
+  // 水边的睡莲（相对河心摆放，河挪了它们跟着挪）
+  const lilies = [
+    [RIVER.centerX - 0.85, -5.5], [RIVER.centerX + 0.65, 4.2],
+    [RIVER.centerX - 0.65, 11.8], [RIVER.centerX + 0.75, -12.4],
+  ];
+  for (const [x, z] of lilies) {
     batch.addBox(x, -0.18, z, 0.48, 0.045, 0.42, 0x5c8e68);
     batch.addBox(x + 0.16, -0.13, z + 0.08, 0.18, 0.12, 0.18, 0xe7a5ae);
   }
@@ -143,7 +151,7 @@ export function buildRiver(voxelMaterial) {
     const w = 0.35 + rng() * 0.7;
     const d = 0.08 + rng() * 0.14;
     const x = RIVER.centerX - 1.2 + rng() * 2.4;
-    const z = -18 + rng() * 36;
+    const z = MAP.z1 + rng() * (MAP.z2 - MAP.z1);
     rippleBatch.addBox(x, 0.01, z, w, 0.018, d, 0x83bdb6);
     rippleSeeds.push({ z, speed: 0.32 + rng() * 0.35, x });
   }
@@ -154,7 +162,8 @@ export function buildRiver(voxelMaterial) {
   rippleMesh.renderOrder = 4;
   group.add(rippleMesh);
 
-  const ducks = [buildDuck(voxelMaterial, 8.65, 5.4), buildDuck(voxelMaterial, 9.45, -7.2)];
+  const cx = RIVER.centerX;
+  const ducks = [buildDuck(voxelMaterial, cx - 0.35, 5.4), buildDuck(voxelMaterial, cx + 0.45, -7.2)];
   for (const d of ducks) group.add(d);
 
   return {

@@ -1,17 +1,17 @@
 import * as THREE from 'three';
-import { TownCamera } from './camera.js?v=1.8.6';
-import { buildWorld } from './world.js?v=1.8.6';
-import { Player } from './player.js?v=1.8.6';
-import { InteractionManager } from './interact.js?v=1.8.6';
-import { ui } from './ui.js?v=1.8.6';
-import { clamp } from './util.js?v=1.8.6';
-import { debugColliderCount, isWalkable, groundHeight } from './collision.js?v=1.8.6';
-import { isInRiver } from './config.js?v=1.8.6';
-import { ServerFeed } from './hub.js?v=1.8.6';
-import { ChickenHerd } from './chickens.js?v=1.8.6';
-import { ProbeUI } from './probeui.js?v=1.8.6';
-import { ServerCards } from './cards.js?v=1.8.6';
-import { ProbePanel } from './panel.js?v=1.8.6';
+import { TownCamera } from './camera.js?v=1.8.7';
+import { buildWorld } from './world.js?v=1.8.7';
+import { Player } from './player.js?v=1.8.7';
+import { InteractionManager } from './interact.js?v=1.8.7';
+import { ui } from './ui.js?v=1.8.7';
+import { clamp } from './util.js?v=1.8.7';
+import { debugColliderCount, isWalkable, groundHeight } from './collision.js?v=1.8.7';
+import { isInRiver, LAYOUT } from './config.js?v=1.8.7';
+import { ServerFeed } from './hub.js?v=1.8.7';
+import { ChickenHerd } from './chickens.js?v=1.8.7';
+import { ProbeUI } from './probeui.js?v=1.8.7';
+import { ServerCards } from './cards.js?v=1.8.7';
+import { ProbePanel } from './panel.js?v=1.8.7';
 
 /* ------------------------------------------------------------------ *
  * 渲染器 / 场景 / 光照 —— 统一在这里初始化
@@ -41,7 +41,8 @@ renderer.toneMappingExposure = 1.08;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#dfe5d8');
-scene.fog = new THREE.Fog('#dfe5d8', 48, 100);
+// 雾与阴影范围跟着小镇一起放大，否则地图边角会被雾吃掉、阴影只盖住中心
+scene.fog = new THREE.Fog('#dfe5d8', 48 * LAYOUT, 100 * LAYOUT);
 
 const hemi = new THREE.HemisphereLight('#fff0dc', '#536f78', 1.65);
 scene.add(hemi);
@@ -52,12 +53,12 @@ const sun = new THREE.DirectionalLight('#ffdfb5', 2.45);
 sun.castShadow = THEME.shadows !== false;
 sun.position.set(-20, 30, 16);
 sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.left = -29;
-sun.shadow.camera.right = 29;
-sun.shadow.camera.top = 29;
-sun.shadow.camera.bottom = -29;
+sun.shadow.camera.left = -29 * LAYOUT;
+sun.shadow.camera.right = 29 * LAYOUT;
+sun.shadow.camera.top = 29 * LAYOUT;
+sun.shadow.camera.bottom = -29 * LAYOUT;
 sun.shadow.camera.near = 1;
-sun.shadow.camera.far = 85;
+sun.shadow.camera.far = 85 * LAYOUT;
 sun.shadow.bias = -0.00035;
 sun.shadow.normalBias = 0.035;
 sun.shadow.radius = 4;

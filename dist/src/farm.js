@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { MeshBatch } from './util.js?v=1.8.6';
-import { C, FARM } from './config.js?v=1.8.6';
-import { addRectCollider } from './collision.js?v=1.8.6';
+import { MeshBatch } from './util.js?v=1.8.7';
+import { C, FARM, LAYOUT } from './config.js?v=1.8.7';
+import { addRectCollider } from './collision.js?v=1.8.7';
 
 /* ------------------------------------------------------------------ *
  * 农田：一垄垄翻好的土 + 四种作物 + 稻草人 + 农具
@@ -65,6 +65,9 @@ function cropGeo(type) {
 
 export function buildFarm(voxelMaterial, unlitMaterial, rng, interactables) {
   const group = new THREE.Group();
+  // 整块农田跟着小镇一起等比放大（地块、作物、稻草人一起长），
+  // 否则围栏放大而田垄不变，田里会空出一圈秃地
+  group.scale.setScalar(LAYOUT);
   const batch = new MeshBatch();
   const crops = [];
   let harvestCount = 0;
@@ -116,9 +119,9 @@ export function buildFarm(voxelMaterial, unlitMaterial, rng, interactables) {
   batch.addBox(-15.45, 0.72, 11, 0.95, 0.12, 0.82, 0x665440);
   for (let i = 0; i < 5; i++) batch.addBox(-15.8 + i * 0.18, 0.84, 11, 0.12, 0.2, 0.5, 0xb69a5c);
 
-  addRectCollider(sx, sz, 0.8, 0.8);
-  addRectCollider(-15.45, 11, 1.2, 1.1);
-  addRectCollider(-3.72, 16.4, 1.4, 0.5);
+  addRectCollider(sx * LAYOUT, sz * LAYOUT, 0.8 * LAYOUT, 0.8 * LAYOUT);
+  addRectCollider(-15.45 * LAYOUT, 11 * LAYOUT, 1.2 * LAYOUT, 1.1 * LAYOUT);
+  addRectCollider(-3.72 * LAYOUT, 16.4 * LAYOUT, 1.4 * LAYOUT, 0.5 * LAYOUT);
 
   const propMesh = batch.build(voxelMaterial);
   propMesh.castShadow = true;
@@ -178,7 +181,7 @@ export function buildFarm(voxelMaterial, unlitMaterial, rng, interactables) {
       produce,
       sprout,
       patch,
-      position: new THREE.Vector3(p.x, 0, p.z),
+      position: new THREE.Vector3(p.x * LAYOUT, 0, p.z * LAYOUT),
       mature: p.mature,
       phase: rng() * 6.28,
       harvested: false,
@@ -188,8 +191,8 @@ export function buildFarm(voxelMaterial, unlitMaterial, rng, interactables) {
     if (p.mature) {
       interactables.push({
         kind: 'crop',
-        x: p.x, z: p.z, anchorY: 1.35,
-        radius: 1.45,
+        x: p.x * LAYOUT, z: p.z * LAYOUT, anchorY: 1.35 * LAYOUT,
+        radius: 1.45 * LAYOUT,
         prompt: `采摘${crop.name}`,
         available: () => crop.mature,
         interact: () => {

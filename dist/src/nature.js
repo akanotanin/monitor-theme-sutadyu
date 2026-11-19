@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { MeshBatch, mulberry32 } from './util.js?v=1.8.6';
-import { C, MAP, TREES, BUSHES, isInRiver } from './config.js?v=1.8.6';
-import { addCircleCollider } from './collision.js?v=1.8.6';
+import { MeshBatch, mulberry32 } from './util.js?v=1.8.7';
+import { C, MAP, P, LAYOUT, TREES, BUSHES, isInRiver } from './config.js?v=1.8.7';
+import { addCircleCollider } from './collision.js?v=1.8.7';
 
 /* ------------------------------------------------------------------ *
  * 树、灌木、花草、蘑菇、石头、倒木、云、蝴蝶
@@ -97,13 +97,14 @@ export function buildNature(voxelMaterial, keepouts = []) {
 
   // ---- 东边树林里的随机树 ----
   let placed = 0;
-  for (let attempts = 0; attempts < 400 && placed < 22; attempts++) {
-    const x = 12.2 + rng() * 8.5;
-    const z = -16.8 + rng() * 33.4;
-    if (x < 16.4 && Math.abs(z) < 4.1) continue;
-    if (Math.abs(x - 15.2) < 2.75 && z < 1.8 && z > -10.2) continue;
-    if (Math.abs(x - 16.3) < 5.5 && z > -14.5 && z < 1) continue;
-    if (Math.hypot(x - 16, z - 5) < 5) continue;
+  const wantTrees = Math.round(22 * LAYOUT);
+  for (let attempts = 0; attempts < 400 * LAYOUT && placed < wantTrees; attempts++) {
+    const x = P(12.2) + rng() * P(8.5);
+    const z = P(-16.8) + rng() * P(33.4);
+    if (x < P(16.4) && Math.abs(z) < P(4.1)) continue;
+    if (Math.abs(x - P(15.2)) < 2.75 && z < P(1.8) && z > P(-10.2)) continue;
+    if (Math.abs(x - P(16.3)) < 5.5 && z > P(-14.5) && z < P(1)) continue;
+    if (Math.hypot(x - P(16), z - P(5)) < 5) continue;
     if (blocked(x, z)) continue;
     const s = 0.75 + rng() * 0.45;
     const g = addTree(trunkBatch, group, x, z, s, rng, placed % 8 === 0);
@@ -124,10 +125,11 @@ export function buildNature(voxelMaterial, keepouts = []) {
 
   // ---- 野花与草丛 ----
   const flowerPalette = C.flowers;
-  for (let i = 0; i < 280; i++) {
-    const x = -20.5 + rng() * 41;
-    const z = -17.5 + rng() * 35;
-    if ((x > 6.5 && x < 11.5) || blocked(x, z, 0.4)) continue;
+  const wantFlowers = Math.round(280 * LAYOUT * LAYOUT);
+  for (let i = 0; i < wantFlowers; i++) {
+    const x = P(-20.5) + rng() * P(41);
+    const z = P(-17.5) + rng() * P(35);
+    if ((x > P(6.5) && x < P(11.5)) || blocked(x, z, 0.4)) continue;
     if (i % 3 === 0) {
       const color = flowerPalette[Math.floor(rng() * flowerPalette.length)];
       const s = 0.65 + rng() * 0.55;
@@ -144,19 +146,19 @@ export function buildNature(voxelMaterial, keepouts = []) {
   }
 
   // ---- 石头（东边）----
-  for (let i = 0; i < 18; i++) {
-    const x = 12.3 + rng() * 8;
-    const z = -16 + rng() * 32;
-    if (Math.abs(z) < 1.8 || blocked(x, z, 0.3)) continue;
+  for (let i = 0; i < Math.round(18 * LAYOUT); i++) {
+    const x = P(12.3) + rng() * P(8);
+    const z = P(-16) + rng() * P(32);
+    if (Math.abs(z) < P(1.8) || blocked(x, z, 0.3)) continue;
     const s = 0.35 + rng() * 0.45;
     decorBatch.addBox(x, 0.18, z, s, 0.32 + rng() * 0.3, s * 1.1, [0x8d8b79, 0xa09b84, 0x7d8172][i % 3]);
   }
 
   // ---- 蘑菇 ----
-  for (let i = 0; i < 30; i++) {
-    const x = 12.4 + ((i * 3.73) % 8.1);
-    const z = -16 + ((i * 7.17) % 32);
-    if (Math.abs(z) < 1.8 || blocked(x, z, 0.3)) continue;
+  for (let i = 0; i < Math.round(30 * LAYOUT); i++) {
+    const x = P(12.4) + P((i * 3.73) % 8.1);
+    const z = P(-16) + P((i * 7.17) % 32);
+    if (Math.abs(z) < P(1.8) || blocked(x, z, 0.3)) continue;
     for (let k = 0; k < 4; k++) {
       const a = (k * Math.PI) / 2;
       decorBatch.addBox(x + Math.cos(a) * 0.16, 0.27, z + Math.sin(a) * 0.16, 0.12, 0.5, 0.24, k % 2 ? 0x4f7c58 : 0x669361, (k * Math.PI) / 4);
@@ -164,7 +166,7 @@ export function buildNature(voxelMaterial, keepouts = []) {
   }
 
   // ---- 倒木 ----
-  for (const [x, z, rot] of [[19, 9, 0], [13, -12, 1.57], [19, -14, 0]]) {
+  for (const [x, z, rot] of [[P(19), P(9), 0], [P(13), P(-12), 1.57], [P(19), P(-14), 0]]) {
     decorBatch.addBox(x, 0.34, z, 1.85, 0.55, 0.58, 0x6f5139, rot);
     decorBatch.addBox(x - 0.65, 0.37, z + 0.28, 0.18, 0.32, 0.18, 0x98704a);
     decorBatch.addBox(x + 0.93, 0.34, z, 0.08, 0.43, 0.44, 0xb08a5b, rot);
@@ -172,18 +174,20 @@ export function buildNature(voxelMaterial, keepouts = []) {
   }
 
   // ---- 野餐草地（桥东）----
-  decorBatch.addBox(16.3, 0.07, 5, 3.6, 0.09, 2.6, 0xd98478);
-  for (let i = -3; i <= 3; i++) decorBatch.addBox(16.3 + i * 0.5, 0.125, 5, 0.1, 0.025, 2.55, 0xf4dfb4);
-  for (let i = -2; i <= 2; i++) decorBatch.addBox(16.3, 0.13, 5 + i * 0.5, 3.55, 0.025, 0.09, 0xf4dfb4);
-  decorBatch.addBox(14.95, 0.18, 4, 0.75, 0.24, 0.75, 0x8ea2b7);
-  decorBatch.addBox(17.55, 0.18, 4, 0.75, 0.24, 0.75, 0xd6b068);
-  for (const [x, z] of [[15.55, 4.65], [16.55, 5.65]]) {
+  const pikX = P(16.3);
+  const pikZ = P(5);
+  decorBatch.addBox(pikX, 0.07, pikZ, 3.6, 0.09, 2.6, 0xd98478);
+  for (let i = -3; i <= 3; i++) decorBatch.addBox(pikX + i * 0.5, 0.125, pikZ, 0.1, 0.025, 2.55, 0xf4dfb4);
+  for (let i = -2; i <= 2; i++) decorBatch.addBox(pikX, 0.13, pikZ + i * 0.5, 3.55, 0.025, 0.09, 0xf4dfb4);
+  decorBatch.addBox(pikX - 1.35, 0.18, pikZ - 1, 0.75, 0.24, 0.75, 0x8ea2b7);
+  decorBatch.addBox(pikX + 1.25, 0.18, pikZ - 1, 0.75, 0.24, 0.75, 0xd6b068);
+  for (const [x, z] of [[pikX - 0.75, pikZ - 0.35], [pikX + 0.25, pikZ + 0.65]]) {
     decorBatch.addBox(x, 0.17, z, 0.58, 0.08, 0.52, 0xf3ead2);
     decorBatch.addBox(x, 0.225, z, 0.36, 0.035, 0.3, 0xd9e0d2);
   }
-  decorBatch.addBox(15.55, 0.35, 4.65, 0.58, 0.22, 0.26, 0xdfa45d);
-  for (let i = -1; i <= 1; i++) decorBatch.addBox(15.55 + i * 0.17, 0.47, 4.65, 0.05, 0.04, 0.22, 0xf3cf83);
-  for (const [x, z] of [[16.45, 5.6], [16.7, 5.48], [16.25, 5.72]]) {
+  decorBatch.addBox(pikX - 0.75, 0.35, pikZ - 0.35, 0.58, 0.22, 0.26, 0xdfa45d);
+  for (let i = -1; i <= 1; i++) decorBatch.addBox(pikX - 0.75 + i * 0.17, 0.47, pikZ - 0.35, 0.05, 0.04, 0.22, 0xf3cf83);
+  for (const [x, z] of [[pikX + 0.15, pikZ + 0.6], [pikX + 0.4, pikZ + 0.48], [pikX - 0.05, pikZ + 0.72]]) {
     decorBatch.addBox(x, 0.34, z, 0.24, 0.26, 0.24, 0xc85f4e);
     decorBatch.addBox(x, 0.5, z, 0.06, 0.1, 0.06, 0x64804e);
   }
@@ -191,7 +195,7 @@ export function buildNature(voxelMaterial, keepouts = []) {
   // ---- 桥头石阶 ----
   for (let i = 0; i <= 6; i++) {
     const t = i / 6;
-    const x = 15.2 - t;
+    const x = P(15.2) - t;
     const y = 0.9 + t * 2.5;
     decorBatch.addBox(x, 0.095, y, 0.58 + (i % 2) * 0.12, 0.07, 0.42, i % 2 ? 0xc4b28e : 0xd5c29b);
   }

@@ -1,18 +1,18 @@
 import * as THREE from 'three';
-import { MeshBatch, mulberry32 } from './util.js?v=1.8.6';
+import { MeshBatch, mulberry32 } from './util.js?v=1.8.7';
 import {
-  C, MAP, HOUSES, LAMPS, BENCHES, PLANTERS, CRATES, BARRELS, FENCES, SIGN, FOUNTAIN,
-} from './config.js?v=1.8.6';
-import { buildTerrain } from './terrain.js?v=1.8.6';
-import { buildRiver } from './river.js?v=1.8.6';
+  C, P, FARM, HOUSES, LAMPS, BENCHES, PLANTERS, CRATES, BARRELS, FENCES, SIGN, FOUNTAIN,
+} from './config.js?v=1.8.7';
+import { buildTerrain } from './terrain.js?v=1.8.7';
+import { buildRiver } from './river.js?v=1.8.7';
 import {
   buildHouse, buildFountain, buildSign, buildBench, buildLamp, buildCrate,
   buildBarrel, buildFence, buildPlanter,
-} from './buildings.js?v=1.8.6';
-import { buildFarm } from './farm.js?v=1.8.6';
-import { buildNature } from './nature.js?v=1.8.6';
-import { buildInhabitants } from './inhabitants.js?v=1.8.6';
-import { addRectCollider } from './collision.js?v=1.8.6';
+} from './buildings.js?v=1.8.7';
+import { buildFarm } from './farm.js?v=1.8.7';
+import { buildNature } from './nature.js?v=1.8.7';
+import { buildInhabitants } from './inhabitants.js?v=1.8.7';
+import { addRectCollider } from './collision.js?v=1.8.7';
 
 /* ------------------------------------------------------------------ *
  * 把整个小镇拼起来
@@ -38,34 +38,46 @@ export function buildWorld(scene) {
   const statics = new MeshBatch();
   const glows = new MeshBatch();
   for (const house of HOUSES) buildHouse(statics, glows, house);
+  const house = (id) => HOUSES.find((h) => h.id === id);
 
-  // 面包房旁边的侧仓
-  statics.addBox(-12.05, 1.08, -6.4, 1.65, 1.95, 2.55, 0xd6a76b);
-  for (let i = 0; i < 3; i++) statics.addBox(-12.05, 2.15 + i * 0.24, -6.4, 2.05 - i * 0.45, 0.28, 2.9, i % 2 ? 0xc97551 : 0xb85f49);
-  statics.addBox(-12.05, 0.92, -5.08, 0.68, 1.45, 0.12, 0x6f6650);
-  addRectCollider(-12.05, -6.4, 1.7, 2.6);
+  // 面包房旁边的侧仓（位置跟着房子走，放大 LAYOUT 时不会脱开）
+  const bakery = house('bakery');
+  const shedX = bakery.x - 3.05;
+  const shedZ = bakery.z - 0.4;
+  statics.addBox(shedX, 1.08, shedZ, 1.65, 1.95, 2.55, 0xd6a76b);
+  for (let i = 0; i < 3; i++) statics.addBox(shedX, 2.15 + i * 0.24, shedZ, 2.05 - i * 0.45, 0.28, 2.9, i % 2 ? 0xc97551 : 0xb85f49);
+  statics.addBox(shedX, 0.92, shedZ + 1.32, 0.68, 1.45, 0.12, 0x6f6650);
+  addRectCollider(shedX, shedZ, 1.7, 2.6);
 
   // 蓝顶小屋的凸窗
-  statics.addBox(2.35, 1, -5.05, 1.25, 1.65, 0.95, 0xe4c795);
-  statics.addBox(2.35, 1.9, -5.05, 1.55, 0.25, 1.25, 0x6f96a5);
-  glows.addBox(2.35, 1.14, -4.53, 0.85, 0.92, 0.09, 0xf2e2b4);
-  for (const x of [2.06, 2.35, 2.64]) statics.addBox(x, 1.14, -4.46, 0.06, 0.94, 0.05, 0xf3e3bd);
-  statics.addBox(2.35, 0.43, -4.48, 1.4, 0.18, 0.4, 0x9b7655);
-  addRectCollider(2.35, -5.05, 1.35, 1.05);
+  const blue = house('blue');
+  const bayX = blue.x + 1.05;
+  const bayZ = blue.z + 2.35;
+  statics.addBox(bayX, 1, bayZ, 1.25, 1.65, 0.95, 0xe4c795);
+  statics.addBox(bayX, 1.9, bayZ, 1.55, 0.25, 1.25, 0x6f96a5);
+  glows.addBox(bayX, 1.14, bayZ + 0.52, 0.85, 0.92, 0.09, 0xf2e2b4);
+  for (const x of [bayX - 0.29, bayX, bayX + 0.29]) statics.addBox(x, 1.14, bayZ + 0.59, 0.06, 0.94, 0.05, 0xf3e3bd);
+  statics.addBox(bayX, 0.43, bayZ + 0.57, 1.4, 0.18, 0.4, 0x9b7655);
+  addRectCollider(bayX, bayZ, 1.35, 1.05);
 
   // 青瓦人家的门廊
-  statics.addBox(-10, 0.18, 7.55, 2.35, 0.26, 1.65, 0xb9a080);
-  for (const x of [-10.9, -9.1]) {
-    statics.addBox(x, 1.45, 8.1, 0.16, 2.5, 0.16, 0x76513d);
-    addRectCollider(x, 8.1, 0.3, 0.3);
+  const teal = house('teal');
+  const porchX = teal.x;
+  const porchZ = teal.z + 2.75;
+  statics.addBox(porchX, 0.18, porchZ, 2.35, 0.26, 1.65, 0xb9a080);
+  for (const x of [porchX - 0.9, porchX + 0.9]) {
+    statics.addBox(x, 1.45, porchZ + 0.55, 0.16, 2.5, 0.16, 0x76513d);
+    addRectCollider(x, porchZ + 0.55, 0.3, 0.3);
   }
-  for (let i = 0; i < 4; i++) statics.addBox(-10, 2.7 + i * 0.2, 7.55, 2.65 - i * 0.48, 0.25, 1.95, i % 2 ? 0x7ba291 : 0x5f8c7d);
+  for (let i = 0; i < 4; i++) statics.addBox(porchX, 2.7 + i * 0.2, porchZ, 2.65 - i * 0.48, 0.25, 1.95, i % 2 ? 0x7ba291 : 0x5f8c7d);
 
   // 河畔侧棚
-  statics.addBox(1.45, 0.95, 9.1, 1.3, 1.65, 2, 0xa8b987);
-  for (let i = 0; i < 3; i++) statics.addBox(1.45, 1.9 + i * 0.22, 9.1, 1.6 - i * 0.35, 0.25, 2.35, 0xca8555);
-  statics.addBox(1.45, 0.8, 10.15, 0.55, 1.2, 0.1, 0x65859b);
-  addRectCollider(1.45, 9.1, 1.4, 2.1);
+  const rsX = P(1.45);
+  const rsZ = P(9.1);
+  statics.addBox(rsX, 0.95, rsZ, 1.3, 1.65, 2, 0xa8b987);
+  for (let i = 0; i < 3; i++) statics.addBox(rsX, 1.9 + i * 0.22, rsZ, 1.6 - i * 0.35, 0.25, 2.35, 0xca8555);
+  statics.addBox(rsX, 0.8, rsZ + 1.05, 0.55, 1.2, 0.1, 0x65859b);
+  addRectCollider(rsX, rsZ, 1.4, 2.1);
 
   // 广场喷泉
   const fountainJets = [];
@@ -108,14 +120,14 @@ export function buildWorld(scene) {
     ...HOUSES.map((h) => ({ x: h.x, z: h.z, r: Math.max(h.width, h.depth) * 0.5 + 1.2 })),
     { x: FOUNTAIN.x, z: FOUNTAIN.z, r: 2.8 },
     { x: SIGN.x, z: SIGN.z, r: 1.4 },
-    { x: -12.05, z: -6.4, r: 1.8 },
-    { x: 2.35, z: -5.05, r: 1.5 },
-    { x: -10, z: 7.55, r: 1.8 },
-    { x: 1.45, z: 9.1, r: 1.8 },
+    { x: shedX, z: shedZ, r: 1.8 },
+    { x: bayX, z: bayZ, r: 1.5 },
+    { x: porchX, z: porchZ, r: 1.8 },
+    { x: rsX, z: rsZ, r: 1.8 },
     ...LAMPS.map(([x, z]) => ({ x, z, r: 0.9 })),
     ...PLANTERS.map(([x, z]) => ({ x, z, r: 1.3 })),
     ...CRATES.map(([x, z]) => ({ x, z, r: 0.9 })),
-    { x: -9.6, z: 13.8, r: 5.2 }, // 农田区域
+    { x: (FARM.x1 + FARM.x2) / 2, z: (FARM.z1 + FARM.z2) / 2, r: (FARM.x2 - FARM.x1) / 2 + 0.6 }, // 农田区域
   ];
   const nature = buildNature(voxel, keepouts);
   group.add(nature.group);
@@ -146,7 +158,6 @@ export function buildWorld(scene) {
   });
 
   addRectCollider(SIGN.x, SIGN.z, 1.95, 0.75);
-  void MAP;
 
   // ---- 喷泉水花 ----
   const jetGeo = new THREE.BoxGeometry(0.09, 0.09, 0.09);
