@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { STATUS } from './hub.js?v=1.8.5';
+import { STATUS } from './hub.js?v=1.8.6';
 
 /* ------------------------------------------------------------------ *
  * 探针界面：右上角概况条、小鸡头顶名牌、右侧服务器详情卡
@@ -13,14 +13,6 @@ const fmtTime = (iso) => {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
 
-const pct = (v) => (v === null || v === undefined ? '—' : `${Math.round(v)}%`);
-
-function barClass(v) {
-  if (v === null || v === undefined) return '';
-  if (v >= 85) return 'hot';
-  if (v >= 60) return 'warm';
-  return '';
-}
 
 export class ProbeUI {
   constructor() {
@@ -36,6 +28,7 @@ export class ProbeUI {
     this.onLabelPick = null;
     this.labelsDisabled = true;
     this.focusedId = null;
+    this.denied = false;
     if (this.labelLayer) this.labelLayer.style.display = 'none';
 
     if (this.card) {
@@ -46,6 +39,13 @@ export class ProbeUI {
   setSummary(summary, updatedAt) {
     this.updatedAt = updatedAt;
     if (!this.bar) return;
+    if (this.denied) {
+      // 站点关了公开页：不是「未发现服务器」，是「需要登录」
+      this.bar.dataset.state = 'locked';
+      if (this.barStatus) this.barStatus.textContent = '本站未对访客开放';
+      if (this.barTime) this.barTime.textContent = '';
+      return;
+    }
     const ok = summary.online === summary.total && summary.total > 0;
     this.bar.dataset.state = summary.total === 0 ? 'empty' : ok ? 'ok' : 'warn';
     if (this.barStatus) {
@@ -55,6 +55,18 @@ export class ProbeUI {
     }
     if (this.barTime) {
       this.barTime.textContent = summary.total ? `更新 ${fmtTime(updatedAt)}` : '';
+    }
+  }
+
+  /** 站点关了公开页：概况条要能说清「需要登录」，而不是「未发现服务器」 */
+  setDenied(v) {
+    const next = !!v;
+    if (this.denied === next) return;
+    this.denied = next;
+    if (this.denied) {
+      if (this.bar) this.bar.dataset.state = 'locked';
+      if (this.barStatus) this.barStatus.textContent = '本站未对访客开放';
+      if (this.barTime) this.barTime.textContent = '';
     }
   }
 
@@ -124,46 +136,14 @@ export class ProbeUI {
     }
   }
 
+  /**
+   * 详情统一由 panel 的详情页承担，这里只记住「当前是哪台」。
+   * （旧版在这里拼一整张 .srv-card 的 HTML 却从不加 .show，纯属死路径——
+   *  5 处调用每次都白建 DOM、白挂监听，还让 probeUI.open 恒为 false。）
+   */
   showDetail(server) {
-    if (!this.card || !server) return;
+    if (!server) return;
     this.current = server;
-    const st = STATUS[server.status] || STATUS.unknown;
-    const rows = [];
-    const metric = (label, value, pctValue) => {
-      const cls = barClass(pctValue);
-      const bar = pctValue === null || pctValue === undefined
-        ? ''
-        : `<i class="fill ${cls}" style="width:${Math.min(100, Math.max(0, pctValue))}%"></i>`;
-      rows.push(`<div class="srv-row"><span class="k">${label}</span><span class="v">${value}</span><span class="bar">${bar}</span></div>`);
-    };
-    metric('CPU', pct(server.cpu), server.cpu);
-    metric('内存', server.memText || pct(server.mem), server.mem);
-    metric('磁盘', pct(server.disk), server.disk);
-    const extra = [];
-    if (server.load !== null) extra.push(`<span><b>负载</b>${server.load.toFixed(2)}</span>`);
-    if (server.cores !== null) extra.push(`<span><b>核数</b>${server.cores}</span>`);
-    if (server.uptimeDays !== null) extra.push(`<span><b>在线</b>${server.uptimeDays} 天</span>`);
-    if (server.latency !== null) extra.push(`<span><b>延迟</b>${Math.round(server.latency)} ms</span>`);
-
-    this.card.innerHTML = `
-      <button class="srv-close" type="button" aria-label="关闭">×</button>
-      <div class="srv-head">
-        <span class="srv-dot" style="background:${st.css}"></span>
-        <span class="srv-name"></span>
-        <span class="srv-state" style="color:${st.css}">${st.label}</span>
-      </div>
-      ${server.role ? `<div class="srv-role"></div>` : ''}
-      <div class="srv-rows">${rows.join('')}</div>
-      ${extra.length ? `<div class="srv-extra">${extra.join('')}</div>` : ''}
-      ${server.note ? `<div class="srv-note"></div>` : ''}
-      <div class="srv-foot">数据时间 ${fmtTime(this.updatedAt)}</div>
-    `;
-    this.card.querySelector('.srv-name').textContent = server.name;
-    if (server.role) this.card.querySelector('.srv-role').textContent = server.role;
-    if (server.note) this.card.querySelector('.srv-note').textContent = server.note;
-    this.card.querySelector('.srv-close').addEventListener('click', () => this.hideDetail());
-    // 详情改由 panel 的详情页承担，这里不再弹小卡
-    return;
   }
 
   hideDetail() {

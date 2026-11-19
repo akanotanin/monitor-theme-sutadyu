@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { MeshBatch } from './util.js?v=1.8.5';
-import { C, FARM } from './config.js?v=1.8.5';
-import { addRectCollider } from './collision.js?v=1.8.5';
+import { MeshBatch } from './util.js?v=1.8.6';
+import { C, FARM } from './config.js?v=1.8.6';
+import { addRectCollider } from './collision.js?v=1.8.6';
 
 /* ------------------------------------------------------------------ *
  * 农田：一垄垄翻好的土 + 四种作物 + 稻草人 + 农具
@@ -66,7 +66,6 @@ function cropGeo(type) {
 export function buildFarm(voxelMaterial, unlitMaterial, rng, interactables) {
   const group = new THREE.Group();
   const batch = new MeshBatch();
-  const glow = new MeshBatch();
   const crops = [];
   let harvestCount = 0;
 
@@ -125,7 +124,6 @@ export function buildFarm(voxelMaterial, unlitMaterial, rng, interactables) {
   propMesh.castShadow = true;
   propMesh.receiveShadow = true;
   group.add(propMesh);
-  void glow;
 
   // ---- 作物 ----
   const patchGeo = new THREE.BoxGeometry(0.8, 0.045, 0.72);

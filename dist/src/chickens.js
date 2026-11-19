@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { MeshBatch } from './util.js?v=1.8.5';
-import { STATUS } from './hub.js?v=1.8.5';
-import { isWalkable } from './collision.js?v=1.8.5';
+import { MeshBatch } from './util.js?v=1.8.6';
+import { STATUS } from './hub.js?v=1.8.6';
+import { isWalkable } from './collision.js?v=1.8.6';
 
 /* ------------------------------------------------------------------ *
  * 探针小鸡：一只鸡 = 一台服务器
@@ -20,13 +20,14 @@ const BEAK = 0xd98a2b;
 const LEG = 0xd9a441;
 const EYE = 0x2b2622;
 
-/** 小鸡的固定落脚点：分布在镇子各处，互不拥挤 */
+/** 小鸡的固定落脚点：分布在镇子各处，互不拥挤（相邻点间距 ≥ 6.6 = 一张紧凑卡的宽度，
+    否则头顶卡片天然叠在一起——「防叠」逻辑只有在点位本身够散时才成立） */
 export const CHICKEN_SLOTS = [
   { x: -3.2, z: -3.4, r: 1.8 }, // 广场西南草地
-  { x: -6.6, z: -2.9, r: 1.6 }, // 面包房前
+  { x: -9.6, z: -6.0, r: 1.6 }, // 面包房西侧草地
   { x: 3.4, z: -2.6, r: 1.6 }, // 蓝顶小屋旁
   { x: -6.4, z: 6.6, r: 1.7 }, // 青瓦人家前
-  { x: -3.0, z: 9.4, r: 1.6 }, // 菜园门口
+  { x: -1.8, z: 11.8, r: 1.6 }, // 菜园门口
   { x: 5.4, z: 6.6, r: 1.5 }, // 河边草地
   { x: 12.4, z: -4.8, r: 1.5 }, // 桥东土路旁
   { x: 19.4, z: -10.4, r: 1.6 }, // 树林边
@@ -182,6 +183,7 @@ export class ChickenHerd {
     this._byId = new Map();
     this._rng = 20261118;
     this._slots = null;
+    this._usedSlots = new Set();   // 已被占用的槽位下标
   }
 
   _rand() {
@@ -189,18 +191,31 @@ export class ChickenHerd {
     return this._rng / 4294967296;
   }
 
+  /**
+   * 领一个空闲槽位。槽位要跟「服务器」绑定，不能跟数组下标走：
+   * 列表按在线状态重排后下标会整体前移，新来的机器会站到别人头上（两只鸡永久重合）。
+   */
+  _takeSlot() {
+    let i = 0;
+    while (this._usedSlots.has(i)) i++;
+    this._usedSlots.add(i);
+    if (!this._slots || this._slots.length <= i) {
+      // buildSlots 是确定性的前缀稳定生成：前 10 个手工点位、之后按最远点采样追加
+      this._slots = buildSlots(Math.max(i + 1, CHICKEN_SLOTS.length));
+    }
+    return i;
+  }
+
   /** 与服务器列表同步：新来的生一只鸡，消失的收走 */
   sync(servers) {
-    // 服务器比现有槽位多就补槽（已在场的小鸡保留原位置，不推倒重来）
-    if (!this._slots || this._slots.length < servers.length) {
-      this._slots = buildSlots(Math.max(servers.length, CHICKEN_SLOTS.length));
-    }
     const seen = new Set();
-    servers.forEach((server, index) => {
+    servers.forEach((server) => {
       seen.add(server.id);
       let item = this._byId.get(server.id);
       if (!item) {
-        item = this._spawn(server, index);
+        const slotIndex = this._takeSlot();
+        item = this._spawn(server, slotIndex);
+        item.slotIndex = slotIndex;
         this._byId.set(server.id, item);
         this.items.push(item);
       }
@@ -212,6 +227,7 @@ export class ChickenHerd {
     for (const [id, item] of [...this._byId]) {
       if (seen.has(id)) continue;
       this._byId.delete(id);
+      this._usedSlots.delete(item.slotIndex);
       const i = this.items.indexOf(item);
       if (i >= 0) this.items.splice(i, 1);
       this.group.remove(item.root);
@@ -232,8 +248,10 @@ export class ChickenHerd {
       x = slot.x + Math.cos(a) * d;
       z = slot.z + Math.sin(a) * d;
     } else {
+      // 手工点位的抖动要小：相邻点位只隔 6.65（= 一张卡宽 6.0 的余量），
+      // 抖太开会把两张卡在静止时就压到一起
       const angle = (index / Math.max(1, CHICKEN_SLOTS.length)) * Math.PI * 2 + 0.7;
-      const dist = 0.4 + (index % 3) * 0.35;
+      const dist = 0.12 + (index % 3) * 0.06;
       x = slot.x + Math.cos(angle) * dist;
       z = slot.z + Math.sin(angle) * dist;
     }
@@ -241,6 +259,8 @@ export class ChickenHerd {
     const body = buildChicken(this.material, index, 1.02 + ((index * 7) % 3) * 0.04);
     body.root.position.set(x, 0, z);
     body.root.rotation.y = this._rand() * Math.PI * 2;
+    // 鼠标射线沿父链找这个标记（main.js 的 updateHover）——没有它悬停/点击整条链路都是空的
+    body.root.userData.serverId = server.id;
     this.group.add(body.root);
 
     const interactable = {
@@ -264,7 +284,8 @@ export class ChickenHerd {
       rightWing: body.rightWing,
       ring: body.ring,
       height: body.height,
-      home: { x, z },
+      home: { x, z },              // 出生点（带抖动）：遛弯围着它转
+      slotHome: { x: slot.x, z: slot.z },  // 槽位中心：头顶卡片「谁出卡」的判定基准，不随走动抖动
       radius: slot.r,
       pos: { x, z },
       target: { x, z },

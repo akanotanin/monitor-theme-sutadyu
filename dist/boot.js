@@ -82,7 +82,10 @@ if (LABEL_MODES.includes(forcedLabel)) config.labelMode = forcedLabel;
 window.__SUTADYU_CONFIG__ = config;
 window.__SUTADYU_ME__ = {
   siteName: (me && me.site_name) || '',
-  historyDays: Number(me && me.history_days) > 0 ? Number(me.history_days) : 0,
+  historyDays: Number(me && me.history_days) > 0 ? Number(me && me.history_days) : 0,
+  // 站点是否对访客开放：false 时 main.js 把「未发现服务器」换成「需要登录」
+  publicPage: me ? me.public_page !== false : null,
+  authed: !!(me && me.authed),
 };
 const siteName = window.__SUTADYU_ME__.siteName;
 // 标签页标题：hub 给的站名（拿不到就保留 Monitor）
@@ -109,4 +112,4 @@ window.__SUTADYU_BOOT_READY__ = reveal;
 // 兜底：主模块异常时最多 5 秒也揭幕，不会永远停在奶油色幕布
 setTimeout(reveal, 5000);
 
-await import('./src/main.js?v=1.8.5');
+await import('./src/main.js?v=1.8.6');

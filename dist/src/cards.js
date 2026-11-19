@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { STATUS } from './hub.js?v=1.8.5';
+import { STATUS } from './hub.js?v=1.8.6';
 
 /* ------------------------------------------------------------------ *
  * 小鸡头顶的信息卡（纸卡风），两档：
@@ -34,9 +34,11 @@ const NOTCH_H = 14;             // 底部指针高
 const W_COMPACT = 6.0;          // 紧凑卡世界宽
 const W_FULL = 6.4;             // 展开卡世界宽
 const DOT_WORLD = 0.72;         // 状态点世界尺寸
-const CARD_MIN_GAP = 5.2;       // 两张完整卡之间的距离下限（约卡宽）——同屏不许互叠成坨
-const KEEP_GAP = 4.2;           // 已在出卡的「保留间距」：比 CARD_MIN_GAP 宽一档，走位时卡不来回跳
+const CARD_MIN_GAP = 6.6;       // 两张完整卡之间的距离下限：必须 ≥ 卡宽（6.0），否则「防叠」本身就是个摆设
+const KEEP_GAP = 7.1;           // 已在出卡的「保留间距」：比 CARD_MIN_GAP 宽一档，走位时卡不来回跳
 const FADE_RATE = 3.4;          // 透明度/尺寸过渡速率（越小越润；约 0.9s 到位）
+// 系统开了「减少动态效果」：卡片直接到位，不做渐变
+const REDUCE_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const FONT = '"PingFang SC","Microsoft YaHei","Hiragino Sans GB",system-ui,sans-serif';
 const COL_BG = '#fffaf0';
@@ -485,7 +487,7 @@ export class ServerCards {
    * @param {number} dt 帧间隔（过渡系数用，帧率无关）
    */
   update(items, playerPos, focusedId = null, dt = 1 / 60) {
-    const K = 1 - Math.exp(-dt * FADE_RATE);   // 一阶平滑：约 0.9s 到位（放慢一档，切换更丝滑）
+    const K = REDUCE_MOTION ? 1 : 1 - Math.exp(-dt * FADE_RATE);   // 一阶平滑：约 0.9s 到位（放慢一档，切换更丝滑）
     const seen = [];
     for (const item of items) {
       const card = this.cards.get(item.server.id);
@@ -507,42 +509,44 @@ export class ServerCards {
     let allowed = null;
     if (this.enabled && this.mode === 'always') {
       allowed = new Set();
-      if (this.cards.size <= budget) {
-        // 小站点（鸡不多）：维持原样，人人有卡
-        for (const { item } of seen) allowed.add(item.server.id);
-      } else {
-        const accepted = [];
-        const focusedEntry = focusedId ? seen.find((x) => x.item.server.id === focusedId) : null;
-        if (focusedEntry) {
-          allowed.add(focusedId);
-          accepted.push({ x: focusedEntry.item.pos.x, z: focusedEntry.item.pos.z });
+      // 间距判定用「槽位中心」而不是当下的走位：小鸡会自己溜达 ±1.6，
+      // 拿实时坐标判会让卡片在阈值上来回翻（一会儿出卡一会儿变点）。
+      const at = (it) => it.slotHome || it.home || it.pos;
+      const accepted = [];
+      // 小站点也必须过一遍间距检查：默认配置下最近的两只鸡只隔 3.4，卡片会叠掉 44%
+      const focusedEntry = focusedId ? seen.find((x) => x.item.server.id === focusedId) : null;
+      if (focusedEntry) {
+        const h = at(focusedEntry.item);
+        allowed.add(focusedId);
+        accepted.push({ x: h.x, z: h.z });
+      }
+      // 1) 保留：上一帧已经在出卡的（容忍度宽一档，边界处不抖）
+      for (const { item, card } of seen) {
+        if (allowed.size >= budget + 2) break;
+        const sid = item.server.id;
+        if (allowed.has(sid) || !card.wasAllowed) continue;
+        const h = at(item);
+        let clash = false;
+        for (const a of accepted) {
+          if (Math.hypot(a.x - h.x, a.z - h.z) < KEEP_GAP) { clash = true; break; }
         }
-        // 1) 保留：上一帧已经在出卡的（容忍度宽一档，边界处不抖）
-        for (const { item, card } of seen) {
-          if (allowed.size >= budget + 2) break;
-          const sid = item.server.id;
-          if (allowed.has(sid) || !card.wasAllowed) continue;
-          let clash = false;
-          for (const a of accepted) {
-            if (Math.hypot(a.x - item.pos.x, a.z - item.pos.z) < KEEP_GAP) { clash = true; break; }
-          }
-          if (clash) continue;
-          allowed.add(sid);
-          accepted.push({ x: item.pos.x, z: item.pos.z });
+        if (clash) continue;
+        allowed.add(sid);
+        accepted.push({ x: h.x, z: h.z });
+      }
+      // 2) 补位：新卡按严格间距进
+      for (const { item } of seen) {
+        if (allowed.size >= budget) break;
+        const sid = item.server.id;
+        if (allowed.has(sid)) continue;
+        const h = at(item);
+        let clash = false;
+        for (const a of accepted) {
+          if (Math.hypot(a.x - h.x, a.z - h.z) < CARD_MIN_GAP) { clash = true; break; }
         }
-        // 2) 补位：新卡按严格间距进
-        for (const { item } of seen) {
-          if (allowed.size >= budget) break;
-          const sid = item.server.id;
-          if (allowed.has(sid)) continue;
-          let clash = false;
-          for (const a of accepted) {
-            if (Math.hypot(a.x - item.pos.x, a.z - item.pos.z) < CARD_MIN_GAP) { clash = true; break; }
-          }
-          if (clash) continue;
-          allowed.add(sid);
-          accepted.push({ x: item.pos.x, z: item.pos.z });
-        }
+        if (clash) continue;
+        allowed.add(sid);
+        accepted.push({ x: h.x, z: h.z });
       }
     }
     // 记下本帧结果，供下一帧的滞回判断

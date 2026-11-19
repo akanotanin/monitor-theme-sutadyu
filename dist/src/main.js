@@ -1,17 +1,17 @@
 import * as THREE from 'three';
-import { TownCamera } from './camera.js?v=1.8.5';
-import { buildWorld } from './world.js?v=1.8.5';
-import { Player } from './player.js?v=1.8.5';
-import { InteractionManager } from './interact.js?v=1.8.5';
-import { ui } from './ui.js?v=1.8.5';
-import { clamp } from './util.js?v=1.8.5';
-import { debugColliderCount, isWalkable, groundHeight } from './collision.js?v=1.8.5';
-import { isInRiver } from './config.js?v=1.8.5';
-import { ServerFeed } from './hub.js?v=1.8.5';
-import { ChickenHerd } from './chickens.js?v=1.8.5';
-import { ProbeUI } from './probeui.js?v=1.8.5';
-import { ServerCards } from './cards.js?v=1.8.5';
-import { ProbePanel } from './panel.js?v=1.8.5';
+import { TownCamera } from './camera.js?v=1.8.6';
+import { buildWorld } from './world.js?v=1.8.6';
+import { Player } from './player.js?v=1.8.6';
+import { InteractionManager } from './interact.js?v=1.8.6';
+import { ui } from './ui.js?v=1.8.6';
+import { clamp } from './util.js?v=1.8.6';
+import { debugColliderCount, isWalkable, groundHeight } from './collision.js?v=1.8.6';
+import { isInRiver } from './config.js?v=1.8.6';
+import { ServerFeed } from './hub.js?v=1.8.6';
+import { ChickenHerd } from './chickens.js?v=1.8.6';
+import { ProbeUI } from './probeui.js?v=1.8.6';
+import { ServerCards } from './cards.js?v=1.8.6';
+import { ProbePanel } from './panel.js?v=1.8.6';
 
 /* ------------------------------------------------------------------ *
  * 渲染器 / 场景 / 光照 —— 统一在这里初始化
@@ -64,9 +64,6 @@ sun.shadow.radius = 4;
 sun.shadow.blurSamples = 12;
 scene.add(sun, sun.target);
 
-if (THEME.viewHeight) {
-  const vh = Number(THEME.viewHeight);
-  }
 const camRig = new TownCamera(window.innerWidth / window.innerHeight);
 if (THEME.viewHeight) {
   const vh = Number(THEME.viewHeight);
@@ -101,6 +98,19 @@ feed.onChange((servers, updatedAt) => {
   panel.setServers(servers);
 });
 feed.start();
+/* 站点关了公开页：/api/nodes 会给 401。这不是「没有节点」，右上角与列表都要说清楚，
+   否则站长主动关掉公开页之后，访客看到的是「未发现服务器」——两拨人都被误导。 */
+const applyDenied = (denied) => {
+  probeUI.setDenied(denied);
+  panel.setDenied(denied);
+  if (denied) {
+    herd.sync([]);
+    serverCards.sync([]);
+  }
+};
+feed.onDenied(applyDenied);
+const ME = window.__SUTADYU_ME__ || {};
+if (ME.publicPage === false && ME.authed === false) applyDenied(true);
 document.querySelector('.probe-bar .pp-open')?.addEventListener('click', () => panel.toggle());
 
 /* ---- 「卡片」总开关：一键收起/展开所有小鸡头顶的服务器卡片 ----
@@ -180,11 +190,13 @@ const keys = Object.create(null);
 const BLOCK = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyE', 'Tab']);
 
 window.addEventListener('keydown', (e) => {
-  if (BLOCK.has(e.code)) e.preventDefault();
+  // 面板内部放行 Tab：键盘用户要能走到「返回 / 关闭 / 页签 / 时间档」
+  const tabInsidePanel = e.code === 'Tab' && !!panel.root?.contains(document.activeElement);
+  if (BLOCK.has(e.code) && !tabInsidePanel) e.preventDefault();
   keys[e.code] = true;
   if (e.repeat) return;
   if (e.code === 'Tab') {
-    e.preventDefault();
+    if (tabInsidePanel) return;
     panel.toggle();
     return;
   }
@@ -193,7 +205,7 @@ window.addEventListener('keydown', (e) => {
     if (panel.open && panel.view === 'detail') panel.showList();
     else if (panel.open) panel.hide();
     else if (ui.noticeOpen) ui.hideNotice();
-    else if (probeUI.open) probeUI.hideDetail();
+    else if (probeUI.current) probeUI.hideDetail();
     else if (ui.dialogueOpen) ui.hideDialogue();
   }
 }, { passive: false });
@@ -253,7 +265,8 @@ function handleInteract() {
 function resize() {
   const w = window.innerWidth;
   const h = window.innerHeight;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.8));
+  // 低画质（设置项 / 帧率自降）只认 1 倍：resize 不能把它悄悄改回 1.8 倍
+  renderer.setPixelRatio(lowQuality ? 1 : Math.min(window.devicePixelRatio || 1, 1.8));
   renderer.setSize(w, h, false);
   camRig.resize(w / h);
 }
@@ -357,7 +370,8 @@ function frame(now) {
 
 const api = {
   ready: false,
-  version: '2.0.0',
+  // 版本号只有一个来源：index.html 的 <meta name="theme-version">（与 theme.json 同步）
+  version: document.querySelector('meta[name="theme-version"]')?.content || '0.0.0',
   debug() {
     const nearest = interaction.current;
     return {
@@ -384,7 +398,7 @@ const api = {
       online: feed.summary.online,
       chickens: herd.items.length,
       chickenList: herd.items.map((i) => ({ id: i.server.id, name: i.server.name, x: +i.pos.x.toFixed(2), z: +i.pos.z.toFixed(2) })),
-      serverCard: probeUI.open || panel.view === 'detail',
+      serverCard: panel.view === 'detail',
       panelOpen: panel.open,
       panelView: panel.view,
       panelSelected: panel.selectedId,
@@ -409,6 +423,13 @@ const api = {
   },
   interact() { return handleInteract(); },
   setKey(code, down) { keys[code] = down; },
+  /** 某只小鸡在屏幕上的落点（无头验收鼠标悬停/点击用） */
+  screenOf(id) {
+    const item = herd.items.find((i) => i.server.id === id);
+    if (!item) return null;
+    const v = new THREE.Vector3(item.pos.x, item.height * 0.6, item.pos.z).project(camRig.camera);
+    return { x: (v.x * 0.5 + 0.5) * window.innerWidth, y: (-v.y * 0.5 + 0.5) * window.innerHeight };
+  },
   probe(x, z) {
     return { walkable: isWalkable(x, z, player.radius), water: isInRiver(x, z), ground: groundHeight(x, z) };
   },

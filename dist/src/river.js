@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { MeshBatch, mulberry32 } from './util.js?v=1.8.5';
-import { C, RIVER, BRIDGE } from './config.js?v=1.8.5';
-import { addRectCollider, addRectColliderMinMax } from './collision.js?v=1.8.5';
+import { MeshBatch, mulberry32 } from './util.js?v=1.8.6';
+import { C, RIVER, BRIDGE } from './config.js?v=1.8.6';
+import { addRectCollider, addRectColliderMinMax } from './collision.js?v=1.8.6';
 
 /* ------------------------------------------------------------------ *
  * 溪流 + 木桥 + 河边的石头、芦苇、睡莲、小鸭
@@ -161,10 +161,8 @@ export function buildRiver(voxelMaterial) {
     group,
     update(time) {
       water.material.uniforms.uTime.value = time;
-      const attr = rippleMesh.geometry.getAttribute('position');
       // 波纹沿河缓慢流动：整体轻微平移，靠 shader 已经足够，这里只做微动
       rippleMesh.position.x = Math.sin(time * 0.4) * 0.05;
-      void attr;
       for (let i = 0; i < ducks.length; i++) {
         const d = ducks[i];
         const start = d.userData.startZ;

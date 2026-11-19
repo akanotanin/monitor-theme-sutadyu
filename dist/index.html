@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#efd3a4" />
+<meta name="theme-version" content="1.8.6" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23efd3a4'/%3E%3Crect x='5' y='13' width='22' height='12' fill='%23d98478'/%3E%3Crect x='8' y='17' width='5' height='6' fill='%23fff6dc'/%3E%3Crect x='19' y='17' width='5' height='6' fill='%23fff6dc'/%3E%3Crect x='4' y='8' width='24' height='6' fill='%23b85f49'/%3E%3Crect x='14' y='19' width='4' height='6' fill='%237b5b3e'/%3E%3C/svg%3E" />
 <title>Monitor</title>
 <style>
@@ -63,7 +64,7 @@
     content: ""; width: 9px; height: 9px; background: var(--leaf);
     transform: rotate(45deg); border-radius: 1px;
   }
-  .hud .hud-site { margin: -4px 0 8px; font-size: 11px; letter-spacing: 0.06em; color: #9a8269; }
+  .hud .hud-site { margin: -4px 0 8px; font-size: 11px; letter-spacing: 0.06em; color: #7d6749; }
   .hud .row {
     display: flex; align-items: center; gap: 7px;
     margin-top: 6px; font-size: 12.5px; color: #6d5644; letter-spacing: 0.02em;
@@ -75,7 +76,7 @@
     border: 1px solid rgba(120, 88, 56, 0.34);
     border-bottom-width: 2px; border-radius: 4px; text-align: center; line-height: 15px;
   }
-  .hud .dim { color: #9a8269; font-size: 11.5px; letter-spacing: 0.08em; }
+  .hud .dim { color: #7d6749; font-size: 11.5px; letter-spacing: 0.08em; }
 
 
   /* ---------------- 探针：右上角概况 ---------------- */
@@ -99,8 +100,10 @@
   }
   .probe-bar[data-state="ok"]::before { background: #5aa860; box-shadow: 0 0 0 3px rgba(90, 168, 96, 0.2); }
   .probe-bar[data-state="warn"]::before { background: #c9902f; box-shadow: 0 0 0 3px rgba(201, 144, 47, 0.2); }
+  .probe-bar[data-state="locked"]::before { background: #b98a4e; box-shadow: 0 0 0 3px rgba(185, 138, 78, 0.22); }
+  .probe-bar[data-state="locked"] .probe-status { color: #8a5f33; }
   .probe-bar .probe-status { font-weight: 700; color: #5d4433; }
-  .probe-bar .probe-time { color: #9a8269; font-size: 11px; }
+  .probe-bar .probe-time { color: #7d6749; font-size: 11px; }
 
   /* ---------------- 探针：小鸡头顶名牌 ---------------- */
   #srv-labels { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
@@ -120,7 +123,7 @@
   }
   .srv-label:hover { background: #fff8e6; border-color: rgba(120, 88, 56, 0.45); }
   .srv-label .dot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
-  .srv-label .cpu { font-size: 10px; font-weight: 600; color: #9a8269; }
+  .srv-label .cpu { font-size: 10px; font-weight: 600; color: #7d6749; }
   .srv-label.compact { padding: 3px; gap: 0; background: rgba(255, 250, 236, 0.78); }
   .srv-label.compact .nm, .srv-label.compact .cpu { display: none; }
   .srv-label.compact .dot { width: 7px; height: 7px; }
@@ -145,7 +148,7 @@
   .srv-close {
     position: absolute; top: 8px; right: 10px;
     width: 22px; height: 22px; padding: 0;
-    font: inherit; font-size: 16px; line-height: 1; color: #9a8269;
+    font: inherit; font-size: 16px; line-height: 1; color: #7d6749;
     background: transparent; border: 0; cursor: pointer; border-radius: 4px;
   }
   .srv-close:hover { background: rgba(120, 88, 56, 0.1); color: #6b5442; }
@@ -153,7 +156,7 @@
   .srv-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
   .srv-name { font-size: 14.5px; font-weight: 800; letter-spacing: 0.03em; color: #4f3b2c; }
   .srv-state { margin-left: auto; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; }
-  .srv-role { margin-top: 6px; font-size: 11px; color: #9a8269; letter-spacing: 0.06em; }
+  .srv-role { margin-top: 6px; font-size: 11px; color: #7d6749; letter-spacing: 0.06em; }
   .srv-rows { margin-top: 12px; display: grid; gap: 9px; }
   .srv-row { display: grid; grid-template-columns: 34px 1fr 78px; align-items: center; gap: 8px; }
   .srv-row .k { font-size: 11px; color: #8d755d; }
@@ -163,9 +166,9 @@
   .srv-row .fill.warm { background: #d9a740; }
   .srv-row .fill.hot { background: #d1665c; }
   .srv-extra { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11px; color: #6b5442; }
-  .srv-extra b { margin-right: 4px; font-weight: 600; color: #a08a72; }
+  .srv-extra b { margin-right: 4px; font-weight: 600; color: #7d6749; }
   .srv-note { margin-top: 10px; font-size: 11px; line-height: 1.6; color: #8d755d; }
-  .srv-foot { margin-top: 12px; padding-top: 8px; border-top: 1px dashed rgba(120, 88, 56, 0.2); font-size: 10.5px; color: #a89480; letter-spacing: 0.06em; }
+  .srv-foot { margin-top: 12px; padding-top: 8px; border-top: 1px dashed rgba(120, 88, 56, 0.2); font-size: 10.5px; color: #7d6749; letter-spacing: 0.06em; }
 
 
   /* ---------------- 探针列表 / 详情（统一悬浮表口径） ---------------- */
@@ -304,7 +307,7 @@
   .pc-carrier .loss.ok { color: #5aa860; }
   .pc-carrier .loss.warn { color: #c9902f; }
   .pc-carrier .loss.bad { color: #c4493f; }
-  .pc-carrier.dim { color: #a89480; }
+  .pc-carrier.dim { color: #7d6749; }
 
   /* 公开备注（卡片尾行；hub 里没填备注就不出现） */
   .pc-pre {
@@ -316,7 +319,7 @@
 
   #plist .note {
     margin: 0; padding: 9px 20px 11px;
-    font-size: 10.5px; color: #a08a72; letter-spacing: 0.05em;
+    font-size: 10.5px; color: #7d6749; letter-spacing: 0.05em;
     border-top: 1px solid rgba(120, 88, 56, 0.14);
   }
   #plist .note kbd {
@@ -374,7 +377,7 @@
     min-width: 0;
   }
   .pgrid dt {
-    font-size: 10.5px; letter-spacing: 0.06em; color: #9a8269;
+    font-size: 10.5px; letter-spacing: 0.06em; color: #7d6749;
     margin-bottom: 2px;
   }
   .pgrid dd {
@@ -457,8 +460,8 @@
   .chips .chip { font-size: 11px; color: #6b5442; }
   .chips .chip b { margin-right: 3px; font-size: 10px; }
 
-  .pd-empty { padding: 26px 8px; text-align: center; font-size: 12px; color: #a89480; }
-  #dcharts .note { margin: 0; padding: 14px 2px; font-size: 12px; color: #a89480; }
+  .pd-empty { padding: 26px 8px; text-align: center; font-size: 12px; color: #7d6749; }
+  #dcharts .note { margin: 0; padding: 14px 2px; font-size: 12px; color: #7d6749; }
 
   /* 顶栏的列表按钮 */
   .probe-bar .pp-open,
@@ -568,7 +571,7 @@
     background: linear-gradient(90deg, transparent, rgba(190, 130, 80, 0.5), transparent);
   }
   #notice .body p { margin: 7px 0; font-size: 13.5px; line-height: 1.85; color: #5c4632; }
-  #notice .close { margin-top: 12px; text-align: center; font-size: 11px; color: #a89480; letter-spacing: 0.08em; }
+  #notice .close { margin-top: 12px; text-align: center; font-size: 11px; color: #7d6749; letter-spacing: 0.08em; }
 
   /* ---------------- 载入 ---------------- */
   /* 入场幕布：没有任何文字，只是把画面从奶油色里淡出来 */
@@ -620,6 +623,15 @@
     .hud .row { font-size: 11.5px; }
     #dialogue { bottom: 16px; padding: 12px 16px 14px; }
     #dialogue-text { font-size: 13.5px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 </style>
 </head>
@@ -679,6 +691,6 @@
   <script type="importmap">
     { "imports": { "three": "./vendor/three.module.js" } }
   </script>
-  <script type="module" src="./boot.js?v=1.8.5"></script>
+  <script type="module" src="./boot.js?v=1.8.6"></script>
 </body>
 </html>

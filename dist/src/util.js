@@ -162,16 +162,20 @@ export class MeshBatch {
       const ux = cx + c1 * topR, uz = cz + s1 * topR;
       const nx = (c0 + c1) / 2, nz = (s0 + s1) / 2;
       const nl = Math.hypot(nx, nz) || 1;
+      // 顶点按「出外面」的绕序排（a → 上沿 → b），否则法线朝里、侧面会被背面剔除
       const verts = [
-        [ax, yBase, az], [bx, yBase, bz], [ux, top, uz],
-        [ax, yBase, az], [ux, top, uz], [tx, top, tz],
+        [ax, yBase, az], [ux, top, uz], [bx, yBase, bz],
+        [ax, yBase, az], [tx, top, tz], [ux, top, uz],
       ];
+      const sideBase = this.vertCount;
       for (const v of verts) {
         this.pos.push(v[0], v[1], v[2]);
         this.nor.push(nx / nl, 0, nz / nl);
         this.col.push(r, g, b);
       }
       this.vertCount += 6;
+      // 侧面这 6 个顶点之前从不进索引 → 整个侧面根本不渲染（本函数暂时没人调用，别留着咬人）
+      for (let k = 0; k < 6; k++) this.idx.push(sideBase + k);
     }
 
     // 顶面 / 底面

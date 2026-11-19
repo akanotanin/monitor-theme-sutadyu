@@ -32,8 +32,8 @@
 1. 从 [Releases](https://github.com/akanotanin/monitor-theme-sutadyu/releases) 下载最新 `theme.tar.gz`；
 2. 面板 → 主题 → 安装主题，上传即可；之后可在面板里「从 GitHub 更新」。
 
-包结构：`theme.json` + `preview.png` + `dist/`（站点根，hub 直接托管）+ `LICENSE` + `README.md`。
+包结构：`theme.json` + `preview.png` + `dist/`（站点根，hub 直接托管）+ `LICENSE` + `README.md` + `THIRD-PARTY-NOTICES.md`。
 
 主题同源读取 hub 的公开接口（`/api/nodes`、`/api/ws`、`/api/me` 与主题配置），不落盘、不显示主机名与 IP。
 
-MIT License
+MIT License。包内第三方组件（three.js，MIT）的版权与许可全文见 `THIRD-PARTY-NOTICES.md`。

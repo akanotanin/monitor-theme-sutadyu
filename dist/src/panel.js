@@ -1,5 +1,8 @@
-import { STATUS } from './hub.js?v=1.8.5';
-import { drawLine, PALETTE, fmtBytes, axisTime } from './charts.js?v=1.8.5';
+import { STATUS } from './hub.js?v=1.8.6';
+import { drawLine, PALETTE, fmtBytes, axisTime } from './charts.js?v=1.8.6';
+
+/** 详情图表缓存的有效期：只为「同一视图里来回切页签/档位」服务，不作长期缓存 */
+const DETAIL_CACHE_TTL = 60_000;
 
 /* ------------------------------------------------------------------ *
  * 探针列表悬浮层 + 服务器详情（统一的展示形式）
@@ -98,8 +101,11 @@ function carrierLine(carriers) {
   if (!carriers || !carriers.length) return '<span class="pc-carrier dim">三网数据加载中…</span>';
   return carriers
     .map((c) => {
-      const cls = c.loss >= 5 ? 'bad' : c.loss >= 1 ? 'warn' : 'ok';
-      return `<span class="pc-carrier"><b>${c.label}</b><span class="lat">${c.latency}ms</span><span class="loss ${cls}">${c.loss.toFixed(1)}%</span></span>`;
+      const loss = c.loss === null || c.loss === undefined ? null : Number(c.loss);
+      const cls = loss === null ? '' : loss >= 5 ? 'bad' : loss >= 1 ? 'warn' : 'ok';
+      const lat = c.latency === null || c.latency === undefined ? '—' : `${c.latency}ms`;
+      const lossText = loss === null ? '—' : `${loss.toFixed(1)}%`;
+      return `<span class="pc-carrier"><b>${c.label}</b><span class="lat">${lat}</span><span class="loss ${cls}">${lossText}</span></span>`;
     })
     .join('');
 }
@@ -184,7 +190,8 @@ export class ProbePanel {
     this.nodeTab = 'res'; // res | lat
     this.rangeKey = DEFAULT_RANGE_KEY;
     this._rangesCache = null;
-    this.detailCache = new Map(); // `${nodeId}:${rangeKey}` -> payload
+    this.detailCache = new Map(); // `${nodeId}:${rangeKey}` -> { at, payload }
+    this.denied = false;          // 站点关了公开页：列表要写「需要登录」，不能写「暂无节点」
     this.detailToken = 0;
     this.chartHandles = [];
 
@@ -210,6 +217,14 @@ export class ProbePanel {
     }
   }
 
+  /** 站点关了公开页（/api/nodes 401）：列表改成「需要登录」的说法 */
+  setDenied(v) {
+    const next = !!v;
+    if (this.denied === next) return;
+    this.denied = next;
+    if (this.open && this.view === 'list') this.renderList();
+  }
+
   renderList() {
     if (!this.bodyEl) return;
     const total = this.servers.length;
@@ -217,9 +232,13 @@ export class ProbePanel {
     const lat = this.servers.map((s) => s.avgLatency).filter((v) => typeof v === 'number');
     const avg = lat.length ? Math.round(lat.reduce((a, b) => a + b, 0) / lat.length) : null;
     if (this.sumEl) {
-      this.sumEl.innerHTML = `共 <b>${total}</b> 台 · 在线 <b>${online}</b>${avg !== null ? ` · 平均延迟 <b>${avg} ms</b>` : ''}`;
+      this.sumEl.innerHTML = this.denied
+        ? '本站未对访客开放'
+        : `共 <b>${total}</b> 台 · 在线 <b>${online}</b>${avg !== null ? ` · 平均延迟 <b>${avg} ms</b>` : ''}`;
     }
-    this.bodyEl.innerHTML = this.servers.map(cardHtml).join('') || '<div class="pd-empty">暂无节点</div>';
+    this.bodyEl.innerHTML = this.denied
+      ? '<div class="pd-empty">本站未对访客开放<br>请登录后台查看（右上角 ⚙ 后台）</div>'
+      : this.servers.map(cardHtml).join('') || '<div class="pd-empty">暂无节点</div>';
     this.bodyEl.querySelectorAll('.pp-card').forEach((card) => {
       card.addEventListener('click', () => {
         const srv = this.servers.find((s) => s.id === card.dataset.id);
@@ -235,6 +254,7 @@ export class ProbePanel {
     this.view = 'list';
     this.selectedId = null;
     this._destroyCharts();
+    this.detailCache.clear();   // 回到列表就把详情数据丢掉：下次点开重新读，别拿几分钟前的曲线
     if (this.titleEl) this.titleEl.textContent = '🖥 探针列表';
     this.bodyEl?.classList.remove('hidden');
     this.detailEl?.classList.add('hidden');
@@ -337,8 +357,12 @@ export class ProbePanel {
     if (!box) return;
     const range = this._ranges().find((r) => r.key === this.rangeKey) || this._ranges()[0];
     const cacheKey = `${server.nodeId}:${range.key}`;
+    const cached = this.detailCache.get(cacheKey);
+    // 缓存只服务「同一会话里来回切页签/档位」；超过 60 s 或面板一关就作废，
+    // 否则同一台机器永远显示第一次读到的曲线
+    const fresh = cached && Date.now() - cached.at < DETAIL_CACHE_TTL;
 
-    if (!this.detailCache.has(cacheKey)) {
+    if (!fresh) {
       box.innerHTML = '<p class="note">正在读探针数据…</p>';
       try {
         const res = await fetch(`/api/nodes/${server.nodeId}/metrics?hours=${range.hours}&points=${range.points}`, {
@@ -346,7 +370,7 @@ export class ProbePanel {
           headers: { Accept: 'application/json' },
         });
         if (!res.ok) throw new Error('HTTP ' + res.status);
-        this.detailCache.set(cacheKey, await res.json());
+        this.detailCache.set(cacheKey, { at: Date.now(), payload: await res.json() });
       } catch (err) {
         if (token === this.detailToken) box.innerHTML = `<p class="note">读取失败：${escapeHtml(err.message)}</p>`;
         return;
@@ -354,7 +378,8 @@ export class ProbePanel {
     }
     if (token !== this.detailToken) return;
 
-    const payload = this.detailCache.get(cacheKey);
+    const payload = this.detailCache.get(cacheKey)?.payload;
+    if (!payload) return;
     this._destroyCharts();
     if (this.nodeTab === 'lat') this._drawLatency(box, payload, range);
     else this._drawResources(box, payload, server, range);
@@ -439,12 +464,29 @@ export class ProbePanel {
     if (handle) this.chartHandles.push(handle);
   }
 
+  /** 把焦点移进面板（role="dialog" 要有真实的键盘行为才成立） */
+  _takeFocus() {
+    if (!this._prevFocus) this._prevFocus = document.activeElement;
+    const target = this.closeBtn || this.root;
+    const grab = () => {
+      if (!this.open) return;
+      if (this.root?.contains(document.activeElement)) return;   // 已经进去了就别抢
+      try { target?.focus?.({ preventScroll: true }); } catch { /* 老浏览器 */ }
+    };
+    grab();
+    // 面板显隐是 0.2s 过渡，visibility 要到过渡中点才真的变 visible：
+    // 这一刻 focus() 会被浏览器静默拒绝，所以过渡结束后再补一次
+    clearTimeout(this._focusTimer);
+    this._focusTimer = setTimeout(grab, 260);
+  }
+
   show() {
     if (!this.root) return;
     this.root.classList.remove('hidden');
     this.root.classList.add('show');
     this.open = true;
     this.showList();
+    this._takeFocus();
   }
 
   /** 直接打开某台机器的详情（从 3D 里点小鸡 / 按 E） */
@@ -454,16 +496,25 @@ export class ProbePanel {
     this.root.classList.add('show');
     this.open = true;
     this.showDetail(server);
+    this._takeFocus();
   }
 
   hide() {
     this.root?.classList.remove('is-detail');
     this.root?.classList.remove('show');
     this.root?.classList.add('hidden');
+    clearTimeout(this._focusTimer);
     this.open = false;
     this.view = 'list';
     this.selectedId = null;
     this._destroyCharts();
+    this.detailCache.clear();
+    // 关掉面板后焦点回到打开它的地方，别把键盘用户扔在 body 上
+    const back = this._prevFocus;
+    this._prevFocus = null;
+    if (back && back !== document.body && document.contains(back) && typeof back.focus === 'function') {
+      try { back.focus({ preventScroll: true }); } catch { /* 忽略 */ }
+    }
   }
 
   toggle() {
