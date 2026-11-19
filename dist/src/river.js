@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { MeshBatch, mulberry32 } from './util.js?v=1.8.7';
-import { C, MAP, RIVER, BRIDGE } from './config.js?v=1.8.7';
-import { addRectCollider, addRectColliderMinMax } from './collision.js?v=1.8.7';
+import { MeshBatch, mulberry32 } from './util.js?v=1.8.8';
+import { C, MAP, RIVER, BRIDGE } from './config.js?v=1.8.8';
+import { addRectCollider, addRectColliderMinMax } from './collision.js?v=1.8.8';
 
 /* ------------------------------------------------------------------ *
  * 溪流 + 木桥 + 河边的石头、芦苇、睡莲、小鸭

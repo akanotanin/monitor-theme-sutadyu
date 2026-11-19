@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { STATUS } from './hub.js?v=1.8.7';
+import { STATUS } from './hub.js?v=1.8.8';
 
 /* ------------------------------------------------------------------ *
  * 小鸡头顶的信息卡（纸卡风），两档：
@@ -40,6 +40,12 @@ const FADE_RATE = 3.4;          // 透明度/尺寸过渡速率（越小越润�
 // 系统开了「减少动态效果」：卡片直接到位，不做渐变
 const REDUCE_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+/* 窄屏「贴边收卡」：手机上一张卡就占半屏，贴着边界的卡会被切掉一半。
+   切掉超过 CLIP_HIDE 就收成状态点，回到 CLIP_SHOW 以下才重新展开（滞回，边界处不闪）。 */
+const CLIP_NARROW = 700;     // 与 CSS 断点 / main.js 的 NARROW_VIEW 同口径
+const CLIP_HIDE = 0.15;   // 切掉 15% 就收（约 33px，圆角已经缺了）
+const CLIP_SHOW = 0.05;   // 回到 5% 以内才重新展开（滞回）
+
 const FONT = '"PingFang SC","Microsoft YaHei","Hiragino Sans GB",system-ui,sans-serif';
 const COL_BG = '#fffaf0';
 const COL_BORDER = 'rgba(120, 88, 56, 0.55)';
@@ -49,6 +55,23 @@ const COL_TRACK = 'rgba(120, 88, 56, 0.16)';
 const COL_SHADOW = 'rgba(96, 66, 38, 0.17)';
 const COL_LINE = 'rgba(120, 88, 56, 0.18)';
 const F_LOAD = 60, F_HOT = 85;  // 与列表页相同的高负载阈值
+
+const _proj = new THREE.Vector3();
+/** 卡片投影到屏幕后被切掉的比例（0 = 完整，1 = 整张都在屏外） */
+function clippedFraction(camera, x, y, z, wWorld, hWorld) {
+  const vh = camera.top - camera.bottom;      // 正交相机的视野高
+  if (!(vh > 0)) return 0;
+  _proj.set(x, y, z).project(camera);
+  const ppwu = window.innerHeight / vh;
+  const w = wWorld * ppwu;
+  const h = hWorld * ppwu;
+  const cx = (_proj.x * 0.5 + 0.5) * window.innerWidth;
+  const cy = (-_proj.y * 0.5 + 0.5) * window.innerHeight;
+  const ix = Math.max(0, Math.min(cx + w / 2, window.innerWidth) - Math.max(cx - w / 2, 0));
+  const iy = Math.max(0, Math.min(cy + h / 2, window.innerHeight) - Math.max(cy - h / 2, 0));
+  const area = w * h;
+  return area > 0 ? 1 - (ix * iy) / area : 0;
+}
 
 function newCanvas(hDesign) {
   const canvas = document.createElement('canvas');
@@ -452,7 +475,7 @@ export class ServerCards {
         const aspect = canvas.height / canvas.width;
         const h = W_COMPACT * aspect;
         sprite.scale.set(W_COMPACT, h, 1);
-        card = { sprite, tex, dot, dotTex, sig: sigOf(server), tier: 'compact', op: 0, dotOp: 0, w: W_COMPACT, h, aspect, gap: 0.72, pending: false };
+        card = { sprite, tex, dot, dotTex, sig: sigOf(server), tier: 'compact', op: 0, dotOp: 0, clipOp: 1, clipped: false, w: W_COMPACT, h, aspect, gap: 0.72, pending: false };
         this.cards.set(server.id, card);
       }
       const sig = sigOf(server);
@@ -486,7 +509,7 @@ export class ServerCards {
    * @param {string|null} focusedId 当前悬停/被提示的那只
    * @param {number} dt 帧间隔（过渡系数用，帧率无关）
    */
-  update(items, playerPos, focusedId = null, dt = 1 / 60) {
+  update(items, playerPos, focusedId = null, dt = 1 / 60, camera = null) {
     const K = REDUCE_MOTION ? 1 : 1 - Math.exp(-dt * FADE_RATE);   // 一阶平滑：约 0.9s 到位（放慢一档，切换更丝滑）
     const seen = [];
     for (const item of items) {
@@ -610,13 +633,27 @@ export class ServerCards {
       card.gap += ((card.tier === 'full' ? 1.5 : 0.72) - card.gap) * K;
       card.sprite.scale.set(card.w, card.h, 1);
       card.sprite.position.set(item.pos.x, item.height + card.gap + card.h / 2, item.pos.z);
-      card.sprite.material.opacity = card.op * (offline ? 0.8 : 1);
-      card.sprite.visible = card.op > 0.02;
+
+      // 窄屏：被屏幕边缘切掉太多就收卡（换成状态点），别露半张卡
+      if (camera && window.innerWidth < CLIP_NARROW) {
+        const p = card.sprite.position;
+        const frac = clippedFraction(camera, p.x, p.y, p.z, card.w, card.h);
+        if (frac > CLIP_HIDE) card.clipped = true;
+        else if (frac < CLIP_SHOW) card.clipped = false;
+      } else {
+        card.clipped = false;
+      }
+      card.clipOp += ((card.clipped ? 0 : 1) - card.clipOp) * K;
+
+      card.sprite.material.opacity = card.op * (offline ? 0.8 : 1) * card.clipOp;
+      card.sprite.visible = card.op * card.clipOp > 0.02;
       card.sprite.renderOrder = 30 + Math.max(0, 140 - Math.round(d * 4));
 
+      // 收起后留一颗状态点，那只鸡头顶不至于空着
+      const dotOpEff = Math.max(card.dotOp, card.clipped ? card.op : 0);
       card.dot.position.set(item.pos.x, item.height + 0.75, item.pos.z);
-      card.dot.material.opacity = card.dotOp * (offline ? 0.7 : 1);
-      card.dot.visible = card.dotOp > 0.02;
+      card.dot.material.opacity = dotOpEff * (offline ? 0.7 : 1);
+      card.dot.visible = dotOpEff > 0.02;
       card.dot.renderOrder = 60;
     });
   }

@@ -1,17 +1,17 @@
 import * as THREE from 'three';
-import { TownCamera } from './camera.js?v=1.8.7';
-import { buildWorld } from './world.js?v=1.8.7';
-import { Player } from './player.js?v=1.8.7';
-import { InteractionManager } from './interact.js?v=1.8.7';
-import { ui } from './ui.js?v=1.8.7';
-import { clamp } from './util.js?v=1.8.7';
-import { debugColliderCount, isWalkable, groundHeight } from './collision.js?v=1.8.7';
-import { isInRiver, LAYOUT } from './config.js?v=1.8.7';
-import { ServerFeed } from './hub.js?v=1.8.7';
-import { ChickenHerd } from './chickens.js?v=1.8.7';
-import { ProbeUI } from './probeui.js?v=1.8.7';
-import { ServerCards } from './cards.js?v=1.8.7';
-import { ProbePanel } from './panel.js?v=1.8.7';
+import { TownCamera } from './camera.js?v=1.8.8';
+import { buildWorld } from './world.js?v=1.8.8';
+import { Player } from './player.js?v=1.8.8';
+import { InteractionManager } from './interact.js?v=1.8.8';
+import { ui } from './ui.js?v=1.8.8';
+import { clamp } from './util.js?v=1.8.8';
+import { debugColliderCount, isWalkable, groundHeight } from './collision.js?v=1.8.8';
+import { isInRiver, LAYOUT } from './config.js?v=1.8.8';
+import { ServerFeed } from './hub.js?v=1.8.8';
+import { ChickenHerd } from './chickens.js?v=1.8.8';
+import { ProbeUI } from './probeui.js?v=1.8.8';
+import { ServerCards } from './cards.js?v=1.8.8';
+import { ProbePanel } from './panel.js?v=1.8.8';
 
 /* ------------------------------------------------------------------ *
  * 渲染器 / 场景 / 光照 —— 统一在这里初始化
@@ -350,7 +350,7 @@ function frame(now) {
     CARD_MODE = modeNow;
     serverCards.setMode(modeNow);
   }
-  serverCards.update(herd.items, player.pos, probeUI.focusedId, dt);
+  serverCards.update(herd.items, player.pos, probeUI.focusedId, dt, camRig.camera);
   updateHover();
 
   renderer.render(scene, camRig.camera);
@@ -424,6 +424,27 @@ const api = {
   },
   interact() { return handleInteract(); },
   setKey(code, down) { keys[code] = down; },
+  /** 每张可见卡片在屏幕上的矩形（无头验收「贴边收卡」用） */
+  cardBounds() {
+    const vh = camRig.camera.top - camRig.camera.bottom;
+    const ppwu = window.innerHeight / vh;
+    const out = [];
+    for (const [id, c] of serverCards.cards) {
+      if (!c.sprite.visible || c.sprite.material.opacity < 0.15) continue;
+      const p = c.sprite.position;
+      const v = new THREE.Vector3(p.x, p.y, p.z).project(camRig.camera);
+      const w = c.w * ppwu;
+      const h = c.h * ppwu;
+      out.push({
+        id,
+        x: Math.round((v.x * 0.5 + 0.5) * window.innerWidth - w / 2),
+        y: Math.round((-v.y * 0.5 + 0.5) * window.innerHeight - h / 2),
+        w: Math.round(w),
+        h: Math.round(h),
+      });
+    }
+    return out;
+  },
   /** 某只小鸡在屏幕上的落点（无头验收鼠标悬停/点击用） */
   screenOf(id) {
     const item = herd.items.find((i) => i.server.id === id);
