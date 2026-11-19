@@ -1,17 +1,17 @@
 import * as THREE from 'three';
-import { TownCamera } from './camera.js?v=1.8.11';
-import { buildWorld } from './world.js?v=1.8.11';
-import { Player } from './player.js?v=1.8.11';
-import { InteractionManager } from './interact.js?v=1.8.11';
-import { ui } from './ui.js?v=1.8.11';
-import { clamp } from './util.js?v=1.8.11';
-import { debugColliderCount, isWalkable, groundHeight } from './collision.js?v=1.8.11';
-import { isInRiver, LAYOUT } from './config.js?v=1.8.11';
-import { ServerFeed } from './hub.js?v=1.8.11';
-import { ChickenHerd } from './chickens.js?v=1.8.11';
-import { ProbeUI } from './probeui.js?v=1.8.11';
-import { ServerCards } from './cards.js?v=1.8.11';
-import { ProbePanel } from './panel.js?v=1.8.11';
+import { TownCamera } from './camera.js?v=1.8.12';
+import { buildWorld } from './world.js?v=1.8.12';
+import { Player } from './player.js?v=1.8.12';
+import { InteractionManager } from './interact.js?v=1.8.12';
+import { ui } from './ui.js?v=1.8.12';
+import { clamp } from './util.js?v=1.8.12';
+import { debugColliderCount, isWalkable, groundHeight } from './collision.js?v=1.8.12';
+import { isInRiver, LAYOUT } from './config.js?v=1.8.12';
+import { ServerFeed } from './hub.js?v=1.8.12';
+import { ChickenHerd } from './chickens.js?v=1.8.12';
+import { ProbeUI } from './probeui.js?v=1.8.12';
+import { ServerCards } from './cards.js?v=1.8.12';
+import { ProbePanel } from './panel.js?v=1.8.12';
 
 /* ------------------------------------------------------------------ *
  * 渲染器 / 场景 / 光照 —— 统一在这里初始化
@@ -93,7 +93,6 @@ const panel = new ProbePanel();
 const feed = new ServerFeed();
 feed.onChange((servers, updatedAt) => {
   herd.sync(servers);
-  probeUI.sync(servers);
   probeUI.setSummary(feed.summary, updatedAt);
   serverCards.sync(servers);
   panel.setServers(servers);
@@ -138,10 +137,6 @@ panel.onPick = (server) => {
   camRig.snapTo(item.pos.x, item.pos.z);
   probeUI.showDetail(server);
 };
-probeUI.onLabelPick = (id) => {
-  const item = herd.items.find((i) => i.server.id === id);
-  if (item) probeUI.showDetail(item.server);
-};
 
 /* ---- 鼠标：悬停高亮 + 点击看详情 ---- */
 const raycaster = new THREE.Raycaster();
@@ -173,6 +168,8 @@ function setPointerFromEvent(e) {
 }
 
 canvasEl.addEventListener('pointerdown', (e) => {
+  // 只认左键/触屏：右键、中键不该开详情（右键菜单才是用户的意图）
+  if (e.button !== 0) return;
   // 触屏点按只有 down/up、没有 move：这里必须自己拾取，不能等 hovered
   setPointerFromEvent(e);
   pointerIn = true;   // 否则下一帧 updateHover 立刻把刚点亮的高亮清掉
@@ -253,6 +250,9 @@ function updateMoveVector() {
  * ------------------------------------------------------------------ */
 
 function handleInteract() {
+  // 面板开着时玩家是冻结的，E 不能穿透到底层：否则盯着 A 机器的详情页按 E，
+  // 会把详情悄悄切到身边那只鸡（还可能在后层弹对话/收菜）。空格/返回键都有自己的路径。
+  if (panel.open) return null;
   if (ui.noticeOpen) {
     ui.hideNotice();
     ui.hidePrompt();
@@ -420,7 +420,11 @@ const api = {
       servers: feed.servers.length,
       online: feed.summary.online,
       chickens: herd.items.length,
-      chickenList: herd.items.map((i) => ({ id: i.server.id, name: i.server.name, x: +i.pos.x.toFixed(2), z: +i.pos.z.toFixed(2) })),
+      chickenList: herd.items.map((i) => ({
+        id: i.server.id, name: i.server.name, x: +i.pos.x.toFixed(2), z: +i.pos.z.toFixed(2),
+        // 槽位中心（不走位）：验收要量「落脚点够不够散」，实时坐标会被溜达糊掉
+        sx: i.slotHome ? +i.slotHome.x.toFixed(2) : null, sz: i.slotHome ? +i.slotHome.z.toFixed(2) : null,
+      })),
       serverCard: panel.view === 'detail',
       panelOpen: panel.open,
       panelView: panel.view,

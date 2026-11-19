@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { MeshBatch, mulberry32 } from './util.js?v=1.8.11';
-import { C, MAP, RIVER, PATHS, LAYOUT } from './config.js?v=1.8.11';
+import { MeshBatch, mulberry32 } from './util.js?v=1.8.12';
+import { C, MAP, RIVER, PATHS, LAYOUT } from './config.js?v=1.8.12';
 
 /* ------------------------------------------------------------------ *
  * 地面：一块泥土基座 + 东西两块草地 + 河床 + 铺路砖

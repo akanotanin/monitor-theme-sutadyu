@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#efd3a4" />
-<meta name="theme-version" content="1.8.11" />
+<meta name="theme-version" content="1.8.12" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23efd3a4'/%3E%3Crect x='5' y='13' width='22' height='12' fill='%23d98478'/%3E%3Crect x='8' y='17' width='5' height='6' fill='%23fff6dc'/%3E%3Crect x='19' y='17' width='5' height='6' fill='%23fff6dc'/%3E%3Crect x='4' y='8' width='24' height='6' fill='%23b85f49'/%3E%3Crect x='14' y='19' width='4' height='6' fill='%237b5b3e'/%3E%3C/svg%3E" />
 <title>Monitor</title>
 <style>
@@ -104,30 +104,6 @@
   .probe-bar[data-state="locked"] .probe-status { color: #8a5f33; }
   .probe-bar .probe-status { font-weight: 700; color: #5d4433; }
   .probe-bar .probe-time { color: #7d6749; font-size: 11px; }
-
-  /* ---------------- 探针：小鸡头顶名牌 ---------------- */
-  #srv-labels { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
-  .srv-label {
-    position: absolute; left: 0; top: 0;
-    display: inline-flex; align-items: center; gap: 5px;
-    padding: 3px 8px 3px 7px;
-    font: inherit; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; color: #4f3b2c;
-    background: rgba(255, 250, 236, 0.9);
-    border: 1px solid rgba(120, 88, 56, 0.26);
-    border-radius: 999px;
-    box-shadow: 0 3px 10px rgba(96, 66, 38, 0.16);
-    white-space: nowrap;
-    cursor: pointer;
-    transition: opacity 0.18s ease, background 0.18s ease, transform 0.05s linear;
-    will-change: transform;
-  }
-  .srv-label:hover { background: #fff8e6; border-color: rgba(120, 88, 56, 0.45); }
-  .srv-label .dot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
-  .srv-label .cpu { font-size: 10px; font-weight: 600; color: #7d6749; }
-  .srv-label.compact { padding: 3px; gap: 0; background: rgba(255, 250, 236, 0.78); }
-  .srv-label.compact .nm, .srv-label.compact .cpu { display: none; }
-  .srv-label.compact .dot { width: 7px; height: 7px; }
-  .srv-label[data-state="offline"] { opacity: 0.62; }
 
   /* ---------------- 探针列表 / 详情（统一悬浮表口径） ---------------- */
   #plist {
@@ -263,9 +239,9 @@
   .pc-carrier b { font-weight: 600; color: #7d6749; }
   .pc-carrier .lat { font-weight: 700; color: #4a3527; }
   .pc-carrier .loss { font-size: 10.5px; }
-  .pc-carrier .loss.ok { color: #5aa860; }
-  .pc-carrier .loss.warn { color: #c9902f; }
-  .pc-carrier .loss.bad { color: #c4493f; }
+  .pc-carrier .loss.ok { color: #3d7439; }
+  .pc-carrier .loss.warn { color: #8a5f12; }
+  .pc-carrier .loss.bad { color: #b23d33; }
   .pc-carrier.dim { color: #7d6749; }
 
   /* 公开备注（卡片尾行；hub 里没填备注就不出现） */
@@ -356,7 +332,7 @@
   }
   .tabs .tab:hover { background: rgba(255, 253, 246, 0.8); border-color: rgba(120, 88, 56, 0.36); }
   .tabs .tab.on {
-    color: #fffaf0; background: #7a9c6a; border-color: #6d8d5e;
+    color: #fffaf0; background: #4a7040; border-color: #3f6034;
   }
 
   /* 时间范围 */
@@ -549,10 +525,9 @@
   /* 世界淡入：首帧先压暗一点点，再回到正常，避免「啪」地出现 */
   #scene { opacity: 0; transition: opacity 1.1s ease-out; }
   body.world-ready #scene { opacity: 1; }
-  .hud, .probe-bar, #srv-labels { opacity: 0; transition: opacity 0.7s ease 0.35s; }
+  .hud, .probe-bar { opacity: 0; transition: opacity 0.7s ease 0.35s; }
   body.world-ready .hud,
-  body.world-ready .probe-bar,
-  body.world-ready #srv-labels { opacity: 1; }
+  body.world-ready .probe-bar { opacity: 1; }
 
   .hidden { opacity: 0 !important; visibility: hidden !important; }
 
@@ -627,8 +602,6 @@
     </div>
   </div>
 
-  <div id="srv-labels"></div>
-
   <div id="prompt" class="hidden"><span class="key">E</span><span id="prompt-text">和露露聊聊</span></div>
   <div id="toast" class="hidden"></div>
 
@@ -649,6 +622,6 @@
   <script type="importmap">
     { "imports": { "three": "./vendor/three.module.js" } }
   </script>
-  <script type="module" src="./boot.js?v=1.8.11"></script>
+  <script type="module" src="./boot.js?v=1.8.12"></script>
 </body>
 </html>

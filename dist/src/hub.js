@@ -51,14 +51,23 @@ async function fetchJson(url, ms = FETCH_TIMEOUT) {
   const timer = setTimeout(() => ac.abort(), ms);
   try {
     const res = await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json' }, signal: ac.signal });
-    let data = null;
-    if (res.ok) {
-      try { data = await res.json(); } catch { data = null; }
-    }
     // 服务器时间（HTTP Date 头，秒）：访客的钟偏快时不能拿它当「现在」，否则 600 s 窗口会把有效样本全丢掉
     const ds = Date.parse(res.headers?.get?.('date') || '');
     const serverNow = Number.isFinite(ds) ? Math.floor(ds / 1000) : undefined;
-    return { ok: res.ok, status: res.status, data, serverNow };
+    if (!res.ok) return { ok: false, status: res.status, data: null, serverNow };
+    // 读 body 也在超时罩子里；解析失败（不是 JSON）单独标出来，别和「超时」混成一句话
+    let data;
+    try {
+      data = await res.json();
+    } catch (err) {
+      if (ac.signal.aborted) return { ok: false, status: 0, data: null, serverNow, timedOut: true };
+      return { ok: false, status: res.status, data: null, serverNow, badJson: true };
+    }
+    return { ok: true, status: res.status, data, serverNow };
+  } catch (err) {
+    // 连响应头都没等到：超时要能自报家门（原来会被上层写成「响应不是 JSON」，排障时完全误导）
+    if (ac.signal.aborted) return { ok: false, status: 0, data: null, timedOut: true };
+    throw err;
   } finally {
     clearTimeout(timer);
   }
@@ -223,6 +232,7 @@ export class ServerFeed {
     this._closed = false;
     this._metricsInflight = new Set();
     this._metricsRound = false;   // 上一轮三网刷新还没跑完（WS 每帧都会调，不能每帧再起一轮）
+    this._metricsForcePending = false; // 轮次进行中被点「强制刷新」：记下来，跑完立刻补一轮
     this._lastFrame = 0;
     this._watch = null;
   }
@@ -295,7 +305,11 @@ export class ServerFeed {
    */
   async refreshMetrics(force = false) {
     // 上游 HISTORY_GATE 只放 4 个并发；一轮没跑完时再开一轮会把并发推到 8/12，直接被 503 打回
-    if (this._metricsRound) return;
+    if (this._metricsRound) {
+      // 但「强制刷新」不能像以前那样静默丢掉：记一笔，本轮跑完立刻补跑
+      if (force) this._metricsForcePending = true;
+      return;
+    }
     const now = Date.now();
     const queue = force
       ? this.servers.filter((s) => s.status !== 'offline' && !this._metricsInflight.has(s.id))
@@ -335,6 +349,10 @@ export class ServerFeed {
       this._metricsRound = false;
     }
     this._emit();
+    if (this._metricsForcePending) {
+      this._metricsForcePending = false;
+      this.refreshMetrics(true);
+    }
   }
 
   async reload() {
@@ -347,8 +365,10 @@ export class ServerFeed {
         this._emit();
         return;
       }
+      if (res.timedOut) throw new Error('读取超时（12 秒无响应）');
+      if (res.badJson) throw new Error('响应不是 JSON');
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      if (!res.data) throw new Error('响应不是 JSON');
+      if (!res.data) throw new Error('响应为空');
       this._setDenied(false);
       this._apply(res.data);
     } catch (err) {

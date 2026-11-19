@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { MeshBatch } from './util.js?v=1.8.11';
-import { STATUS } from './hub.js?v=1.8.11';
-import { isWalkable } from './collision.js?v=1.8.11';
-import { MAP } from './config.js?v=1.8.11';
+import { MeshBatch } from './util.js?v=1.8.12';
+import { STATUS } from './hub.js?v=1.8.12';
+import { isWalkable } from './collision.js?v=1.8.12';
+import { MAP } from './config.js?v=1.8.12';
 
 /* ------------------------------------------------------------------ *
  * 探针小鸡：一只鸡 = 一台服务器
@@ -20,6 +20,12 @@ const COMB = 0xc93434;
 const BEAK = 0xd98a2b;
 const LEG = 0xd9a441;
 const EYE = 0x2b2622;
+
+/* 自动生成点位的间距约束（超出手工点位时用）：
+   SLOT_MIN_GAP = 卡宽 6.0 —— 比这更近的两点，屏上必有一张卡被防叠收成状态点；
+   FLOOR 是塞不下时的放宽底线，避免机器多时把鸡挤到地图角落重叠。 */
+const SLOT_MIN_GAP = 6.0;
+const SLOT_MIN_GAP_FLOOR = 4.0;
 
 /** 小鸡的固定落脚点：分布在镇子各处，互不拥挤（相邻点间距 ≥ 6.6 = 一张紧凑卡的宽度，
     否则头顶卡片天然叠在一起——「防叠」逻辑只有在点位本身够散时才成立） */
@@ -41,7 +47,7 @@ export const CHICKEN_SLOTS = [
  * 「最远点采样」——每只新鸡都落在离已有全部点位最远的候选点上，
  * 天然铺满全图、不会挤成一圈（数量少时也一样散得开）。
  */
-function buildSlots(count) {
+export function buildSlots(count) {
   const slots = CHICKEN_SLOTS.slice(0, Math.min(count, CHICKEN_SLOTS.length));
   if (count <= slots.length) return slots;
   let seed = 20261118;
@@ -49,7 +55,11 @@ function buildSlots(count) {
     seed = (seed * 1664525 + 1013904223) >>> 0;
     return seed / 4294967296;
   };
-  const CAND = 32;                        // 每个新点位试 32 个候选，谁离大家最远选谁
+  const CAND = 96;                        // 每个新点位试 96 个候选，谁离大家最远选谁（32 个时 40 台只能做到 5.68）
+  // 生成点位之间的最小间距：一张卡宽（6.0）。两点挨得比卡还近，屏上必有一张被收成
+  // 状态点（卡片防叠是 6.6），跟「每个点都够散」的承诺不一致。机器太多、地图塞不下
+  // 时按 6% 逐级放宽到 4.0（60 台那种密度下 6.0 已不可能），宁可略挤也别把鸡甩到地图角落重叠。
+  let minGap = SLOT_MIN_GAP;
   let guard = 0;
   while (slots.length < count && guard < 4000) {
     guard++;
@@ -68,6 +78,13 @@ function buildSlots(count) {
       if (dmin > bestD) { bestD = dmin; best = { x, z }; }
     }
     if (!best) break;                     // 候选全不可走（几乎不会发生）
+    if (bestD < minGap) {
+      if (minGap > SLOT_MIN_GAP_FLOOR) {
+        minGap = Math.max(SLOT_MIN_GAP_FLOOR, minGap * 0.94);
+        continue;                         // 这一轮不算数：放宽下限重抽
+      }
+      // 已经放到最松还是塞不下：只能收下这个最近的点，机器总得有地方站
+    }
     slots.push({ x: +best.x.toFixed(2), z: +best.z.toFixed(2), r: 1.0, gen: true });
   }
   return slots;

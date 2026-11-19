@@ -1,5 +1,5 @@
-import { STATUS } from './hub.js?v=1.8.11';
-import { drawLine, PALETTE, fmtBytes, axisTime } from './charts.js?v=1.8.11';
+import { STATUS } from './hub.js?v=1.8.12';
+import { drawLine, PALETTE, fmtBytes, axisTime } from './charts.js?v=1.8.12';
 
 /** 详情图表缓存的有效期：只为「同一视图里来回切页签/档位」服务，不作长期缓存 */
 const DETAIL_CACHE_TTL = 60_000;
@@ -255,7 +255,8 @@ export class ProbePanel {
       return;
     }
     // 按 id 复用卡片节点：WS 每 2 s 推一帧，全量重写会把滚动位置、悬停态和键盘焦点一起冲掉。
-    // 内容没变的卡片原样搬回来（移动节点不会重建），变了的只换那一张。
+    // 卡片里嵌着带宽/负载，每推必变 —— 所以「节点不换、只就地把内容换掉」：按钮节点留在原地，
+    // 焦点、悬停、宽度过渡都不会被打断（换整颗节点的话键盘用户每 2 s 就会被踢回 body）。
     const existing = new Map();
     for (const el of [...this.bodyEl.children]) {
       if (el.classList?.contains('pp-card')) existing.set(el.dataset.id, el);
@@ -266,15 +267,30 @@ export class ProbePanel {
       if (old && old.__html === html) return old;
       const box = document.createElement('div');
       box.innerHTML = html;
-      const node = box.firstElementChild;
-      node.__html = html;
-      if (old && old === document.activeElement) node.focus({ preventScroll: true });
-      return node;
+      const fresh = box.firstElementChild;
+      if (!old) {
+        fresh.__html = html;
+        return fresh;
+      }
+      old.className = fresh.className;
+      old.title = fresh.title;
+      old.innerHTML = fresh.innerHTML;
+      old.__html = html;
+      return old;
     });
     // 节点全都没变就别动 DOM：replaceChildren 会先摘后插，焦点会被摘掉
     const cur = this.bodyEl.children;
     const same = cur.length === nodes.length && nodes.every((n, i) => cur[i] === n);
-    if (!same) this.bodyEl.replaceChildren(...nodes);
+    if (same) return;
+    // 顺序变了（hub 每次推送把离线排到最后）：先记下聚焦的是哪一张，插完再按 id 找回来
+    const focusId = this.bodyEl.contains(document.activeElement)
+      ? document.activeElement.closest?.('.pp-card')?.dataset.id ?? null
+      : null;
+    this.bodyEl.replaceChildren(...nodes);
+    if (focusId) {
+      const again = [...this.bodyEl.children].find((el) => el.dataset.id === focusId);
+      again?.focus?.({ preventScroll: true });
+    }
   }
 
   showList() {
@@ -403,7 +419,9 @@ export class ProbePanel {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         this.detailCache.set(cacheKey, { at: Date.now(), payload: await res.json() });
       } catch (err) {
-        if (token === this.detailToken) box.innerHTML = `<p class="note">读取失败：${escapeHtml(err.message)}</p>`;
+        // 超时别把英文 AbortError 原样拼给访客看（「The user aborted a request.」不像人能读的提示）
+        const msg = ac.signal.aborted ? '读取超时（15 秒无响应）' : err.message;
+        if (token === this.detailToken) box.innerHTML = `<p class="note">读取失败：${escapeHtml(msg)}</p>`;
         return;
       } finally {
         clearTimeout(timer);
