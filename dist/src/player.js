@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { createCharacter, animateWalk, animateIdle } from './character.js?v=1.8.9';
-import { isWalkable, groundHeight } from './collision.js?v=1.8.9';
-import { damp, dampAngle } from './util.js?v=1.8.9';
-import { PLAYER_START } from './config.js?v=1.8.9';
+import { createCharacter, animateWalk, animateIdle } from './character.js?v=1.8.11';
+import { isWalkable, groundHeight } from './collision.js?v=1.8.11';
+import { damp, dampAngle } from './util.js?v=1.8.11';
+import { PLAYER_START } from './config.js?v=1.8.11';
 
 export const PLAYER_RADIUS = 0.34;
 const WALK_SPEED = 4.15;

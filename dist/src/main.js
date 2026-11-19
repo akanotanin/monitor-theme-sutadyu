@@ -1,17 +1,17 @@
 import * as THREE from 'three';
-import { TownCamera } from './camera.js?v=1.8.9';
-import { buildWorld } from './world.js?v=1.8.9';
-import { Player } from './player.js?v=1.8.9';
-import { InteractionManager } from './interact.js?v=1.8.9';
-import { ui } from './ui.js?v=1.8.9';
-import { clamp } from './util.js?v=1.8.9';
-import { debugColliderCount, isWalkable, groundHeight } from './collision.js?v=1.8.9';
-import { isInRiver, LAYOUT } from './config.js?v=1.8.9';
-import { ServerFeed } from './hub.js?v=1.8.9';
-import { ChickenHerd } from './chickens.js?v=1.8.9';
-import { ProbeUI } from './probeui.js?v=1.8.9';
-import { ServerCards } from './cards.js?v=1.8.9';
-import { ProbePanel } from './panel.js?v=1.8.9';
+import { TownCamera } from './camera.js?v=1.8.11';
+import { buildWorld } from './world.js?v=1.8.11';
+import { Player } from './player.js?v=1.8.11';
+import { InteractionManager } from './interact.js?v=1.8.11';
+import { ui } from './ui.js?v=1.8.11';
+import { clamp } from './util.js?v=1.8.11';
+import { debugColliderCount, isWalkable, groundHeight } from './collision.js?v=1.8.11';
+import { isInRiver, LAYOUT } from './config.js?v=1.8.11';
+import { ServerFeed } from './hub.js?v=1.8.11';
+import { ChickenHerd } from './chickens.js?v=1.8.11';
+import { ProbeUI } from './probeui.js?v=1.8.11';
+import { ServerCards } from './cards.js?v=1.8.11';
+import { ProbePanel } from './panel.js?v=1.8.11';
 
 /* ------------------------------------------------------------------ *
  * 渲染器 / 场景 / 光照 —— 统一在这里初始化
@@ -175,6 +175,7 @@ function setPointerFromEvent(e) {
 canvasEl.addEventListener('pointerdown', (e) => {
   // 触屏点按只有 down/up、没有 move：这里必须自己拾取，不能等 hovered
   setPointerFromEvent(e);
+  pointerIn = true;   // 否则下一帧 updateHover 立刻把刚点亮的高亮清掉
   const hit = pickFromPointer();
   if (!hit) return;
   if (hit !== hovered) {

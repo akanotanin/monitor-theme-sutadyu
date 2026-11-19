@@ -1,8 +1,9 @@
-import { STATUS } from './hub.js?v=1.8.9';
-import { drawLine, PALETTE, fmtBytes, axisTime } from './charts.js?v=1.8.9';
+import { STATUS } from './hub.js?v=1.8.11';
+import { drawLine, PALETTE, fmtBytes, axisTime } from './charts.js?v=1.8.11';
 
 /** 详情图表缓存的有效期：只为「同一视图里来回切页签/档位」服务，不作长期缓存 */
 const DETAIL_CACHE_TTL = 60_000;
+const DETAIL_FETCH_TIMEOUT = 15_000;   // 反代吊住 body 时别让详情页永远停在「正在读探针数据…」
 
 /* ------------------------------------------------------------------ *
  * 探针列表悬浮层 + 服务器详情（统一的展示形式）
@@ -391,16 +392,21 @@ export class ProbePanel {
 
     if (!fresh) {
       box.innerHTML = '<p class="note">正在读探针数据…</p>';
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), DETAIL_FETCH_TIMEOUT);
       try {
         const res = await fetch(`/api/nodes/${server.nodeId}/metrics?hours=${range.hours}&points=${range.points}`, {
           cache: 'no-store',
           headers: { Accept: 'application/json' },
+          signal: ac.signal,
         });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         this.detailCache.set(cacheKey, { at: Date.now(), payload: await res.json() });
       } catch (err) {
         if (token === this.detailToken) box.innerHTML = `<p class="note">读取失败：${escapeHtml(err.message)}</p>`;
         return;
+      } finally {
+        clearTimeout(timer);
       }
     }
     if (token !== this.detailToken) return;

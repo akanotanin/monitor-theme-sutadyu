@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { STATUS } from './hub.js?v=1.8.9';
+import { STATUS } from './hub.js?v=1.8.11';
 
 /* ------------------------------------------------------------------ *
  * 小鸡头顶的信息卡（纸卡风），两档：
@@ -511,6 +511,7 @@ export class ServerCards {
    */
   update(items, playerPos, focusedId = null, dt = 1 / 60, camera = null) {
     const K = REDUCE_MOTION ? 1 : 1 - Math.exp(-dt * FADE_RATE);   // 一阶平滑：约 0.9s 到位（放慢一档，切换更丝滑）
+    const KOUT = REDUCE_MOTION ? 1 : 1 - Math.exp(-dt * FADE_RATE * 2.6);  // 收卡快一档：约 0.35s，别压着别人的卡
     // 间距判定用的位置走一层低通：小鸡会自己溜达，拿实时坐标判会逐帧翻牌（一会儿出卡一会儿变点），
     // 拿窝点判又管不住「两只鸡走到一起」——低通（约 1.8 s 跟上）两头都照顾到
     const KSLOW = 1 - Math.exp(-dt * 0.55);
@@ -575,6 +576,37 @@ export class ServerCards {
         allowed.add(sid);
         accepted.push({ x: h.x, z: h.z });
       }
+
+      // 3) 兜底：间距是拿「低通位置」判的，追上真实位置要 1~2 s。
+      //    两只鸡正好对穿而过时，低通还觉得它们离得够远，屏幕上的卡已经压上了。
+      //    这里按真实位置再硬查一遍：宁可一张收成状态点，也不许两张卡糊在一起。
+      //    判据用「屏幕矩形」而不是世界距离：斜视角下两张卡世界距离够远，投影到屏幕上照样压住。
+      const byId = new Map(seen.map((x) => [x.item.server.id, x]));
+      const vh = camera ? camera.top - camera.bottom : 0;
+      const ppwu = vh > 0 ? window.innerHeight / vh : 0;
+      const placed = [];
+      for (const sid of [...allowed]) {
+        const entry = byId.get(sid);
+        if (!entry) continue;
+        const it = entry.item;
+        const c = entry.card;
+        let box;
+        if (camera && ppwu) {
+          const y = it.height + c.gap + c.h / 2;
+          const v = _proj.set(it.pos.x, y, it.pos.z).project(camera);
+          box = {
+            x: (v.x * 0.5 + 0.5) * window.innerWidth,
+            y: (-v.y * 0.5 + 0.5) * window.innerHeight,
+            w: c.w * ppwu,
+            h: c.h * ppwu,
+          };
+        }
+        if (box && placed.some((a) => Math.abs(a.x - box.x) < (a.w + box.w) * 0.46 && Math.abs(a.y - box.y) < (a.h + box.h) * 0.46)) {
+          allowed.delete(sid);
+          continue;
+        }
+        if (box) placed.push(box);
+      }
     }
     // 记下本帧结果，供下一帧的滞回判断
     for (const [id, c] of this.cards) c.wasAllowed = !!(allowed && allowed.has(id));
@@ -624,7 +656,8 @@ export class ServerCards {
         this._redraw(card, server);
       }
 
-      card.op += (cardOp - card.op) * K;
+      // 出卡慢慢「长出来」，收卡要利索：让位的卡别在别人卡上面赖着半透明
+      card.op += (cardOp - card.op) * (cardOp > card.op ? K : KOUT);
       card.dotOp += (dotOp - card.dotOp) * K;
 
       // 尺寸目标按当前档位；切换档位时尺寸渐变 → 「长出来」的效果
@@ -670,7 +703,7 @@ export class ServerCards {
     let compact = 0;
     let dots = 0;
     for (const c of this.cards.values()) {
-      if (c.sprite.visible && c.op > 0.5) {
+      if (c.sprite.visible && c.op * (c.clipOp ?? 1) > 0.5) {
         visible++;
         if (c.tier === 'full') full++;
         else compact++;

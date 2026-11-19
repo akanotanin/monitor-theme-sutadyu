@@ -1,18 +1,18 @@
 import * as THREE from 'three';
-import { MeshBatch, mulberry32 } from './util.js?v=1.8.9';
+import { MeshBatch, mulberry32 } from './util.js?v=1.8.11';
 import {
   C, P, FARM, HOUSES, LAMPS, BENCHES, PLANTERS, CRATES, BARRELS, FENCES, SIGN, FOUNTAIN,
-} from './config.js?v=1.8.9';
-import { buildTerrain } from './terrain.js?v=1.8.9';
-import { buildRiver } from './river.js?v=1.8.9';
+} from './config.js?v=1.8.11';
+import { buildTerrain } from './terrain.js?v=1.8.11';
+import { buildRiver } from './river.js?v=1.8.11';
 import {
   buildHouse, buildFountain, buildSign, buildBench, buildLamp, buildCrate,
   buildBarrel, buildFence, buildPlanter,
-} from './buildings.js?v=1.8.9';
-import { buildFarm } from './farm.js?v=1.8.9';
-import { buildNature } from './nature.js?v=1.8.9';
-import { buildInhabitants } from './inhabitants.js?v=1.8.9';
-import { addRectCollider } from './collision.js?v=1.8.9';
+} from './buildings.js?v=1.8.11';
+import { buildFarm } from './farm.js?v=1.8.11';
+import { buildNature } from './nature.js?v=1.8.11';
+import { buildInhabitants } from './inhabitants.js?v=1.8.11';
+import { addRectCollider } from './collision.js?v=1.8.11';
 
 /* ------------------------------------------------------------------ *
  * 把整个小镇拼起来

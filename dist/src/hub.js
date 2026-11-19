@@ -41,12 +41,24 @@ const FRESH_WINDOW = 600;         // 三网样本只需最近 10 分钟
 const WS_IDLE_MS = 10_000;        // 上游约定：10 s 没有帧就当断流，页面自己重连
 const FETCH_TIMEOUT = 12_000;     // 请求超时：反代卡住时别让页面永远等下去
 
-/** 带超时的 fetch（反代只建连不回包时，裸 fetch 会一直挂着） */
-async function fetchOk(url, ms = FETCH_TIMEOUT) {
+/**
+ * 带超时的 GET + 读 body。超时必须罩住「读到 body 为止」——
+ * 只在响应头回来时清定时器的话，反代把 body 吊住照样永久挂起。
+ * @returns {Promise<{ok:boolean,status:number,data:any}>}
+ */
+async function fetchJson(url, ms = FETCH_TIMEOUT) {
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), ms);
   try {
-    return await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json' }, signal: ac.signal });
+    const res = await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json' }, signal: ac.signal });
+    let data = null;
+    if (res.ok) {
+      try { data = await res.json(); } catch { data = null; }
+    }
+    // 服务器时间（HTTP Date 头，秒）：访客的钟偏快时不能拿它当「现在」，否则 600 s 窗口会把有效样本全丢掉
+    const ds = Date.parse(res.headers?.get?.('date') || '');
+    const serverNow = Number.isFinite(ds) ? Math.floor(ds / 1000) : undefined;
+    return { ok: res.ok, status: res.status, data, serverNow };
   } finally {
     clearTimeout(timer);
   }
@@ -298,12 +310,12 @@ export class ServerFeed {
         this._metricsInflight.add(server.id);
         try {
           // 卡片只读延迟：series=ping 让 hub 跳过 metrics 那一半扫描（仍带 probes/loss）
-          const res = await fetchOk(`/api/nodes/${server.nodeId}/metrics?series=ping`);
+          const res = await fetchJson(`/api/nodes/${server.nodeId}/metrics?series=ping`);
           const target = this.servers.find((s) => s.id === server.id);
           if (!target) continue;
           target.carriersAt = Date.now();     // 失败也记一笔：别让每一帧都重打一遍
-          if (!res.ok) continue;
-          const summary = summarizeMetrics(await res.json());
+          if (!res.ok || !res.data) continue;
+          const summary = summarizeMetrics(res.data, res.serverNow);
           target.carriers = summary.carriers;
           target.carriersLoaded = true;
           target.avgLatency = summary.avgLatency;
@@ -327,7 +339,7 @@ export class ServerFeed {
 
   async reload() {
     try {
-      const res = await fetchOk('/api/nodes');
+      const res = await fetchJson('/api/nodes');
       if (res.status === 401) {
         // 站点关了公开页：这不是「没有节点」，是「需要登录」
         this._setDenied(true);
@@ -336,8 +348,9 @@ export class ServerFeed {
         return;
       }
       if (!res.ok) throw new Error('HTTP ' + res.status);
+      if (!res.data) throw new Error('响应不是 JSON');
       this._setDenied(false);
-      this._apply(await res.json());
+      this._apply(res.data);
     } catch (err) {
       console.warn('[探针小镇] 读取 /api/nodes 失败：', err.message);
     }
