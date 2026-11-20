@@ -19,7 +19,7 @@ const SHORT = 'sutadyu';
 /* 载入动画先起：拿不到元素/画布时 mount() 返回 null，后面所有进度调用都变成空操作 */
 let load = null;
 try {
-  const mod = await import('./src/loading.js?v=1.8.16');
+  const mod = await import('./src/loading.js?v=1.8.17');
   load = mod.mount();
 } catch (err) {
   console.warn('[sutadyu] 载入动画未启动', err);
@@ -150,7 +150,7 @@ window.__SUTADYU_BOOT_READY__ = finish;
 setTimeout(finish, 25000);
 
 try {
-  await import('./src/main.js?v=1.8.16');
+  await import('./src/main.js?v=1.8.17');
 } catch (err) {
   // 主模块起不来：别把访客困在奶油色幕布上，直接揭幕（场景会是空的，但至少不假装在加载）
   console.error('[sutadyu] 小镇主模块加载失败', err);

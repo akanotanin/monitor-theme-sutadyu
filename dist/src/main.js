@@ -1,17 +1,17 @@
 import * as THREE from 'three';
-import { TownCamera } from './camera.js?v=1.8.16';
-import { buildWorld } from './world.js?v=1.8.16';
-import { Player } from './player.js?v=1.8.16';
-import { InteractionManager } from './interact.js?v=1.8.16';
-import { ui } from './ui.js?v=1.8.16';
-import { clamp } from './util.js?v=1.8.16';
-import { debugColliderCount, isWalkable, groundHeight } from './collision.js?v=1.8.16';
-import { isInRiver, LAYOUT } from './config.js?v=1.8.16';
-import { ServerFeed } from './hub.js?v=1.8.16';
-import { ChickenHerd } from './chickens.js?v=1.8.16';
-import { ProbeUI } from './probeui.js?v=1.8.16';
-import { ServerCards } from './cards.js?v=1.8.16';
-import { ProbePanel } from './panel.js?v=1.8.16';
+import { TownCamera } from './camera.js?v=1.8.17';
+import { buildWorld } from './world.js?v=1.8.17';
+import { Player } from './player.js?v=1.8.17';
+import { InteractionManager } from './interact.js?v=1.8.17';
+import { ui } from './ui.js?v=1.8.17';
+import { clamp } from './util.js?v=1.8.17';
+import { debugColliderCount, isWalkable, groundHeight } from './collision.js?v=1.8.17';
+import { isInRiver, LAYOUT } from './config.js?v=1.8.17';
+import { ServerFeed } from './hub.js?v=1.8.17';
+import { ChickenHerd } from './chickens.js?v=1.8.17';
+import { ProbeUI } from './probeui.js?v=1.8.17';
+import { ServerCards } from './cards.js?v=1.8.17';
+import { ProbePanel } from './panel.js?v=1.8.17';
 
 /* ------------------------------------------------------------------ *
  * 渲染器 / 场景 / 光照 —— 统一在这里初始化
@@ -144,6 +144,15 @@ panel.onPick = (server) => {
   probeUI.showDetail(server);
 };
 
+/* ---- 指针设备判定：触屏 / 鼠标 ----
+   ?touch=1 / ?touch=0 只是给桌面预览与无头验收临时开关触屏档（不动设备本身）。 */
+const TOUCH_PARAM = new URLSearchParams(location.search).get('touch');
+const isTouch = TOUCH_PARAM === '1' ? true
+  : TOUCH_PARAM === '0' ? false
+    : matchMedia('(pointer: coarse)').matches
+      || (matchMedia('(hover: none)').matches && 'ontouchstart' in window);
+if (isTouch) document.body.classList.add('touch');
+
 /* ---- 鼠标：悬停高亮 + 点击看详情 ---- */
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2(0, 0);
@@ -151,6 +160,9 @@ let pointerIn = false;
 let hovered = null;
 const canvasEl = renderer.domElement;
 window.addEventListener('pointermove', (e) => {
+  // 触屏没有「悬停」：手指抬起后上一次的位置会一直留在 pointer 里，
+  // 于是那只小鸡永远亮着、光标也一直是 pointer。只让鼠标改悬停态。
+  if (e.pointerType && e.pointerType !== 'mouse') return;
   setPointerFromEvent(e);
   pointerIn = true;
 });
@@ -179,6 +191,8 @@ canvasEl.addEventListener('pointerdown', (e) => {
   // 触屏点按只有 down/up、没有 move：这里必须自己拾取，不能等 hovered
   setPointerFromEvent(e);
   pointerIn = true;   // 否则下一帧 updateHover 立刻把刚点亮的高亮清掉
+  // 触屏没有「移开」这回事：点完得自己把悬停态放掉，否则那只鸡会一直亮着
+  if (e.pointerType && e.pointerType !== 'mouse') setTimeout(() => { pointerIn = false; }, 600);
   const hit = pickFromPointer();
   if (!hit) return;
   if (hit !== hovered) {
@@ -249,11 +263,108 @@ function updateMoveVector() {
   if (ix !== 0) moveVec.addScaledVector(_right, ix);
   if (iz !== 0) moveVec.addScaledVector(_fwd, iz);
   if (moveVec.lengthSq() > 1e-6) moveVec.normalize();
+  // 触屏摇杆：叠加在键盘之上（外接键盘的平板两边都能用）。
+  // 摇杆给的是「相对镜头的方向 + 0~1 的力度」，所以用相机右/前基向量合成，
+  // 不能直接当世界坐标用——斜俯视镜头下那样会往右上偏。
+  if (stickVec.x !== 0 || stickVec.y !== 0) {
+    moveVec.addScaledVector(_right, stickVec.x).addScaledVector(_fwd, stickVec.y);
+    if (moveVec.lengthSq() > 1) moveVec.normalize();
+  }
 }
 
 /* ------------------------------------------------------------------ *
- * 互动
+ * 触屏：左下摇杆走位 + 右下动作键（等同键盘 E）
+ *
+ * 手机上本没有任何输入入口：WASD / E / Tab / Esc 都是键盘专属，访客只能干看。
+ * 这里补摇杆与动作键；列表、卡片开关顶栏已有按钮，面板自带返回/关闭，
+ * 所以 Tab / Esc 不再造第二份。
  * ------------------------------------------------------------------ */
+
+const stickVec = { x: 0, y: 0 };   // 摇杆输出：x 向右、y 向前，长度 0~1
+let stickPointer = null;
+
+const stickEl = document.getElementById('stick');
+const knobEl = document.getElementById('stick-knob');
+const actBtn = document.getElementById('t-act');
+const touchLayer = document.getElementById('touch');
+
+/** 松开摇杆：清方向、复位摇杆头（面板/公告打开时也要强制归零，别让残留方向继续推玩家） */
+function releaseStick() {
+  stickPointer = null;
+  stickVec.x = 0; stickVec.y = 0;
+  if (knobEl) knobEl.style.transform = '';
+  stickEl?.classList.remove('drag');
+}
+
+if (isTouch && stickEl && knobEl && actBtn && touchLayer) {
+  touchLayer.classList.remove('hidden');
+  touchLayer.setAttribute('aria-hidden', 'false');
+
+  const DEAD = 0.16;   // 死区：手指轻抖不该让角色一点点挪
+  const setStick = (e) => {
+    const r = stickEl.getBoundingClientRect();
+    const half = r.width / 2;
+    let dx = (e.clientX - (r.left + half)) / half;
+    let dy = (e.clientY - (r.top + half)) / half;
+    const d = Math.hypot(dx, dy) || 0;
+    const k = d > 1 ? 1 / d : 1;            // 超出圆盘按边缘算
+    dx *= k; dy *= k;
+    const eff = d < DEAD ? 0 : Math.min(1, (d - DEAD) / (1 - DEAD));
+    stickVec.x = dx * eff;
+    stickVec.y = -dy * eff;                 // 屏幕 y 向下 →「前」是 -y
+    // 摇杆头跟手：行程 = 盘半径 - 拇指半径
+    const reach = Math.max(0, half - 27);
+    knobEl.style.transform = `translate(${dx * eff * reach}px, ${dy * eff * reach}px)`;
+  };
+
+  stickEl.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    stickPointer = e.pointerId;
+    stickEl.classList.add('drag');
+    // 指针捕获：手指滑出圆盘也继续跟，否则一甩出边界角色就停
+    try { stickEl.setPointerCapture(e.pointerId); } catch (err) { /* 老浏览器 */ }
+    setStick(e);
+    e.preventDefault();
+  });
+  stickEl.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== stickPointer) return;
+    setStick(e);
+    e.preventDefault();
+  });
+  stickEl.addEventListener('pointerup', (e) => { if (e.pointerId === stickPointer) releaseStick(); });
+  stickEl.addEventListener('pointercancel', (e) => { if (e.pointerId === stickPointer) releaseStick(); });
+  stickEl.addEventListener('lostpointercapture', () => releaseStick());
+
+  // 动作键 = 键盘 E：靠近小鸡 / 村民 / 告示牌 / 作物时开详情、说话、采摘
+  actBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    handleInteract();
+  });
+}
+
+/** 每帧同步动作键的可用态（互动对象是 interaction.update 算出来的） */
+function syncTouchAction() {
+  if (!isTouch || !actBtn) return;
+  // 面板是整屏浮层：摇杆/动作键必须一起收起，否则会盖在九格与图表上（触屏档专用，鼠标档不变）
+  const covered = !!panel.open;
+  if (document.body.classList.contains('panel-open') !== covered) {
+    document.body.classList.toggle('panel-open', covered);
+  }
+  const cur = interaction.current;
+  const on = !!cur;
+  if (actBtn.classList.contains('on') !== on) actBtn.classList.toggle('on', on);
+  // 按钮文字跟着最近的东西走：小鸡=详情、村民=对话、告示牌=公告、作物=采摘
+  const label = !cur ? '互动'
+    : cur.kind === 'server' ? '详情'
+      : cur.kind === 'villager' ? '对话'
+        : cur.kind === 'sign' ? '公告'
+          : cur.kind === 'crop' ? '采摘' : '互动';
+  const lab = actBtn.firstElementChild;
+  if (lab && lab.textContent !== label) lab.textContent = label;
+  const title = cur ? cur.prompt : '靠近小鸡或村民再互动';
+  if (actBtn.title !== title) actBtn.title = title;
+  actBtn.setAttribute('aria-label', title);
+}
 
 function handleInteract() {
   // 面板开着时玩家是冻结的，E 不能穿透到底层：否则盯着 A 机器的详情页按 E，
@@ -341,6 +452,10 @@ function frame(now) {
     } else lowAccum = 0;
   }
 
+  // 面板/公告是模态的：触屏摇杆不能在后层继续推着玩家（第二根手指压在摇杆上的场景）
+  if (ui.noticeOpen || panel.open) {
+    if (stickPointer !== null) releaseStick(); else if (stickVec.x || stickVec.y) { stickVec.x = 0; stickVec.y = 0; }
+  }
   updateMoveVector();
   if (autoTarget) {
     const dx = autoTarget.x - player.pos.x;
@@ -363,6 +478,7 @@ function frame(now) {
   camRig.update(dt, player.pos.x, player.pos.z, aheadX, aheadZ);
 
   interaction.update(camRig.camera, player.pos, window.innerWidth, window.innerHeight, !panel.open);
+  syncTouchAction();
   world.update(dt, elapsed, player.pos);
   herd.update(dt, elapsed, player.pos);
   // 交互对象自己带 serverId：按名字子串反查会在 web / web-2 这种前缀名上认错鸡
@@ -500,6 +616,20 @@ const api = {
   },
   setAutopilot(x, z) { autoTarget = { x, z }; return { target: autoTarget }; },
   stopAutopilot() { autoTarget = null; },
+  /** 触屏控件的运行时状态（验收用：真实手势要打到 DOM 上，这里只读数） */
+  touch: {
+    get enabled() { return !!(isTouch && stickEl && !touchLayer?.classList.contains('hidden')); },
+    get stick() { return { x: +stickVec.x.toFixed(3), y: +stickVec.y.toFixed(3) }; },
+    get knob() { return knobEl?.style.transform || ''; },
+    get act() {
+      return {
+        on: !!actBtn?.classList.contains('on'),
+        label: actBtn?.firstElementChild?.textContent || '',
+        near: interaction.current ? interaction.current.kind : null,
+      };
+    },
+    release() { releaseStick(); return this.stick; },
+  },
   setViewHeight(h) {
     // 调试接口也要钳制：h=0/负数会让正交相机的上下边界重合（整屏黑）
     camRig.viewHeight = clamp(Number(h) || camRig.viewHeight, 10, 60);

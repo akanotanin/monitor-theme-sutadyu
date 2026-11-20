@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { MeshBatch } from './util.js?v=1.8.16';
-import { STATUS } from './hub.js?v=1.8.16';
-import { isWalkable, groundHeight } from './collision.js?v=1.8.16';
-import { MAP, isOnBridge } from './config.js?v=1.8.16';
+import { MeshBatch } from './util.js?v=1.8.17';
+import { STATUS } from './hub.js?v=1.8.17';
+import { isWalkable, groundHeight } from './collision.js?v=1.8.17';
+import { MAP, isOnBridge } from './config.js?v=1.8.17';
 
 /* ------------------------------------------------------------------ *
  * 探针小鸡：一只鸡 = 一台服务器

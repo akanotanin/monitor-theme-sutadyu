@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#efd3a4" />
-<meta name="theme-version" content="1.8.16" />
+<meta name="theme-version" content="1.8.17" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23efd3a4'/%3E%3Crect x='5' y='13' width='22' height='12' fill='%23d98478'/%3E%3Crect x='8' y='17' width='5' height='6' fill='%23fff6dc'/%3E%3Crect x='19' y='17' width='5' height='6' fill='%23fff6dc'/%3E%3Crect x='4' y='8' width='24' height='6' fill='%23b85f49'/%3E%3Crect x='14' y='19' width='4' height='6' fill='%237b5b3e'/%3E%3C/svg%3E" />
 <title>Monitor</title>
 <style>
@@ -68,6 +68,14 @@
   .hud .row {
     display: flex; align-items: center; gap: 7px;
     margin-top: 6px; font-size: 12.5px; color: #6d5644; letter-spacing: 0.02em;
+  }
+  /* 触屏档专用的一行说明：桌面（鼠标）不显示，body.touch 才替换掉键位提示 */
+  .hud .row-touch { display: none; }
+  .hud .row-touch .tk {
+    display: inline-block; padding: 1px 7px;
+    font-size: 11px; font-weight: 700; color: #6b5442;
+    background: rgba(255, 253, 244, 0.9);
+    border: 1px solid rgba(120, 88, 56, 0.3); border-radius: 4px; line-height: 15px;
   }
   .hud kbd {
     display: inline-block; min-width: 20px; padding: 1px 6px;
@@ -149,6 +157,12 @@
     font: inherit; font-size: 16px; line-height: 1; color: #7d6749;
     background: transparent; border: 0; border-radius: 7px; cursor: pointer;
   }
+  /* 触屏档：面板开着时把摇杆/动作键收起来（它们盖在详情页下层，会挡到九格与图表），
+     同时把返回/关闭抬到真机触控目标下限（30 → 44）。 */
+  body.touch #plist-back, body.touch #plist-close { width: 44px; height: 44px; font-size: 17px; flex: 0 0 auto; }
+  body.touch #plist-back { margin-left: -12px; }
+  body.touch.panel-open #touch { opacity: 0; visibility: hidden; pointer-events: none; }
+
   #plist-back { margin-left: -6px; }
   #plist-close { flex: 0 0 auto; }
   #plist-back:hover, #plist-close:hover { background: rgba(120, 88, 56, 0.1); color: #4a3527; }
@@ -412,6 +426,107 @@
   /* 「卡片」开关处于关闭态：变淡 + 划掉，一眼看出当前没在显示 */
   .probe-bar .pp-cards[aria-pressed="false"] { opacity: 0.55; text-decoration: line-through; }
 
+  /* ---------------- 触屏操作：左下摇杆 + 右下动作键 ----------------
+     只在 pointer: coarse / 无悬停的设备上由 main.js 取消 hidden（body.touch）。
+     纸面配色跟小镇一致：奶油底盘 + 木色描边，不用深色玻璃。 */
+  #touch { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+  #stick {
+    position: absolute; left: clamp(14px, 4vw, 26px); bottom: calc(20px + env(safe-area-inset-bottom));
+    width: 116px; height: 116px; border-radius: 50%;
+    background: radial-gradient(circle at 50% 42%, rgba(255, 250, 236, 0.62), rgba(255, 244, 222, 0.4));
+    border: 1px solid rgba(120, 88, 56, 0.36);
+    box-shadow: 0 8px 22px rgba(96, 66, 38, 0.2), inset 0 0 0 6px rgba(255, 255, 255, 0.26);
+    backdrop-filter: blur(3px);
+    pointer-events: auto; touch-action: none;
+  }
+  #stick::after {
+    content: ""; position: absolute; left: 50%; top: 50%;
+    width: 62%; height: 62%; margin: -31% 0 0 -31%;
+    border-radius: 50%; border: 1px dashed rgba(120, 88, 56, 0.22);
+  }
+  #stick-knob {
+    position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px;
+    border-radius: 50%;
+    background: linear-gradient(180deg, #fffdf4, #f2e3c4);
+    border: 1px solid rgba(120, 88, 56, 0.44);
+    box-shadow: 0 4px 10px rgba(96, 66, 38, 0.26), inset 0 -2px 0 rgba(150, 100, 50, 0.18);
+    transition: transform 0.07s ease-out;
+  }
+  #stick.drag #stick-knob { transition: none; }
+  #tbtns {
+    position: absolute; right: clamp(14px, 4vw, 26px); bottom: calc(20px + env(safe-area-inset-bottom));
+    display: flex; align-items: flex-end;
+  }
+  #t-act {
+    width: 86px; height: 86px; padding: 0;
+    display: grid; place-items: center;
+    font: inherit; color: #6d5644;
+    background: linear-gradient(180deg, rgba(255, 252, 244, 0.92), rgba(246, 232, 203, 0.92));
+    border: 1px solid rgba(120, 88, 56, 0.4);
+    border-radius: 50%;
+    box-shadow: 0 8px 20px rgba(96, 66, 38, 0.2), inset 0 -3px 0 rgba(150, 100, 50, 0.16);
+    pointer-events: auto; touch-action: none;
+    opacity: 0.58;
+    transition: opacity 0.16s ease, transform 0.12s ease, background 0.16s ease;
+  }
+  /* 附近能互动时点亮（不是灰按钮，一眼知道现在按了有用） */
+  #t-act.on {
+    opacity: 1; color: #4a3524;
+    background: linear-gradient(180deg, #ffe9ac, #f3cf7d);
+    border-color: rgba(120, 84, 44, 0.52);
+  }
+  #t-act:active { transform: scale(0.94); }
+  #t-act .t-lab { font-size: 15px; font-weight: 800; letter-spacing: 0.08em; }
+
+  /* 触屏文案：键位提示对触屏访客是噪音（手机上还会和顶栏撞在一起），统一换成触屏说法 */
+  body.touch .hud .row:not(.row-touch) { display: none; }
+  body.touch .hud .row-touch { display: flex; }
+  /* 窄屏触屏（手机竖屏）：HUD 只留主题名、状态条去掉更新时间，两者并排一行。
+     收窄后 HUD 94px + 状态条 185px 在 390px 里放得下（原来 HUD 全宽 + 8 个键帽
+     会与状态条重叠 1248px²）；宽屏触屏（平板）仍走桌面版式。 */
+  @media (max-width: 700px) {
+    body.touch .hud {
+      min-width: 0; padding: 0 10px;
+      height: 34px;
+      display: flex; align-items: center;
+      border-radius: 6px;
+    }
+    body.touch .hud h1 { margin: 0; font-size: 12.5px; letter-spacing: 0.1em; }
+    body.touch .hud h1::before { width: 7px; height: 7px; }
+    body.touch .hud .hud-site { display: none; }
+    /* 手机竖屏连触屏说明也收掉：一行说明会把 HUD 顶高，而摇杆 + 动作键自带说明
+       （宽屏触屏才显示那行） */
+    body.touch .hud .row-touch { display: none; }
+    body.touch .probe-bar {
+      height: 34px;
+      padding: 0 8px;
+      font-size: 11.5px;
+      gap: 6px;
+    }
+    body.touch .probe-bar .probe-time { display: none; }
+    /* 触屏档按钮要够点：桌面 21px 的行高在手指上太细，抬到 30px（≈44px 触控目标的
+       内边距口径，靠 padding 撑，不改变顶栏高度太多） */
+    body.touch .probe-bar .pp-open,
+    body.touch .probe-bar .pp-cards {
+      display: inline-flex; align-items: center;
+      padding: 5px 9px; font-size: 11.5px; line-height: 1.2;
+      min-height: 30px;
+    }
+  }
+  body.touch #prompt .key { display: none; }
+  body.touch #prompt { padding: 6px 13px; }
+  /* 摇杆/动作键占住两个下角：对话与 toast 抬到它们上面 */
+  body.touch #dialogue { bottom: calc(150px + env(safe-area-inset-bottom)); }
+  body.touch #toast { bottom: calc(206px + env(safe-area-inset-bottom)); }
+  @media (max-height: 430px) {
+    #stick { width: 92px; height: 92px; }
+    #stick-knob { width: 44px; height: 44px; margin: -22px 0 0 -22px; }
+    #t-act { width: 70px; height: 70px; }
+    #t-act .t-lab { font-size: 13px; }
+    body.touch #dialogue { bottom: calc(118px + env(safe-area-inset-bottom)); }
+    body.touch #toast { bottom: calc(170px + env(safe-area-inset-bottom)); }
+  }
+
   /* ---------------- 靠近物件时的按键提示 ---------------- */
   #prompt {
     position: absolute; left: 0; top: 0;
@@ -423,6 +538,8 @@
     box-shadow: 0 6px 16px rgba(96, 66, 38, 0.2);
     font-size: 13px; font-weight: 700; color: #5b432f;
     white-space: nowrap;
+    /* 提示条只是标签：它浮在小鸡上方，吃掉 pointer-events 会让「点小鸡」点不中 */
+    pointer-events: none;
     transform: translate(-50%, -50%) scale(0.92);
     transform-origin: center;
     transition: opacity 0.16s ease, transform 0.16s ease;
@@ -600,6 +717,8 @@
     <div class="row"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span class="dim">/</span><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd><span>移动</span></div>
     <div class="row"><kbd>E</kbd><span>查看服务器</span><span class="dim">/</span><span>点击小鸡</span></div>
     <div class="row"><kbd>Tab</kbd><span>探针列表</span><span class="dim">/</span><span>点行跳转</span></div>
+    <!-- 触屏档的等价说明（键盘提示对手机是噪音，只留这一行） -->
+    <div class="row row-touch"><span class="tk">摇杆</span><span>走位</span><span class="dim">/</span><span class="tk">点小鸡</span><span>看数据</span></div>
   </div>
 
   <div id="probe-bar" class="probe-bar" data-state="empty">
@@ -627,6 +746,15 @@
   <div id="prompt" class="hidden"><span class="key">E</span><span id="prompt-text">和露露聊聊</span></div>
   <div id="toast" class="hidden"></div>
 
+  <!-- 触屏操作：左下虚拟摇杆（拖动走位）+ 右下动作键（附近有东西可互动时才点亮，等同键盘 E）。
+       桌面/带触摸板的笔电默认 hidden，由 main.js 按 pointer:coarse 取消。 -->
+  <div id="touch" class="hidden" aria-hidden="true">
+    <div id="stick"><div id="stick-knob"></div></div>
+    <div id="tbtns">
+      <button id="t-act" type="button" aria-label="互动"><span class="t-lab">互动</span></button>
+    </div>
+  </div>
+
   <div id="dialogue">
     <div id="speaker"></div>
     <div id="dialogue-text"></div>
@@ -648,8 +776,8 @@
   </div>
 
   <script type="importmap">
-    { "imports": { "three": "./vendor/three.module.js?v=1.8.16" } }
+    { "imports": { "three": "./vendor/three.module.js?v=1.8.17" } }
   </script>
-  <script type="module" src="./boot.js?v=1.8.16"></script>
+  <script type="module" src="./boot.js?v=1.8.17"></script>
 </body>
 </html>

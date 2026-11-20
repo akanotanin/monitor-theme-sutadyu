@@ -1,4 +1,4 @@
-import { MAP, WALKWAYS, isInRiver, isOnBridge, groundHeightAt } from './config.js?v=1.8.16';
+import { MAP, WALKWAYS, isInRiver, isOnBridge, groundHeightAt } from './config.js?v=1.8.17';
 
 /* ------------------------------------------------------------------ *
  * 碰撞登记表（矩形 / 圆），玩家按轴移动时统一查询
