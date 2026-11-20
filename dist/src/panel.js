@@ -1,5 +1,5 @@
-import { STATUS } from './hub.js?v=1.8.14';
-import { drawLine, PALETTE, fmtBytes, axisTime } from './charts.js?v=1.8.14';
+import { STATUS } from './hub.js?v=1.8.15';
+import { drawLine, PALETTE, fmtBytes, axisTime } from './charts.js?v=1.8.15';
 
 /** 详情图表缓存的有效期：只为「同一视图里来回切页签/档位」服务，不作长期缓存 */
 const DETAIL_CACHE_TTL = 60_000;

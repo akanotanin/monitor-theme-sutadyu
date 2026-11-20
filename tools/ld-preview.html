@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>loader dev</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #f0dcb8; }
+  body { display: grid; place-items: center; }
+  #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #f0dcb8; }
+  .ld-stage { display: grid; justify-items: center; gap: 12px; }
+  #ld-canvas { display: block; image-rendering: pixelated; }
+  .ld-tip { margin: 0; font-family: system-ui, sans-serif; font-size: 11.5px; letter-spacing: 0.22em; color: #7d6749; }
+</style>
+</head>
+<body>
+  <div id="loading">
+    <div class="ld-stage">
+      <canvas id="ld-canvas" width="216" height="128"></canvas>
+      <p class="ld-tip">小镇正在醒来 …</p>
+    </div>
+  </div>
+  <script type="module">
+    /**
+     * 载入动画的独立预览页（只给开发/验收用，不进发布包）。
+     *   ?p=0.55         固定进度
+     *   ?p=0.55&done=1  演完 100% 的收尾
+     *   ?auto=1         模拟一次真实加载：0.12 → 爬升 → done()
+     */
+    import { mount } from '../dist/src/loading.js';
+    const api = mount();
+    window.__L__ = api;
+    const q = new URLSearchParams(location.search);
+    if (q.has('p')) api.set(Number(q.get('p')));
+    if (q.has('done')) setTimeout(() => api.done(() => {}), 150);
+    if (q.has('auto')) {
+      const t0 = performance.now();
+      const tick = () => {
+        const t = (performance.now() - t0) / 1000;
+        if (t < 3.2) api.set(Math.min(0.86, 0.12 + t * 0.23));
+        else if (t >= 4.0) { api.done(() => {}); return; }
+        requestAnimationFrame(tick);
+      };
+      tick();
+    }
+  </script>
+</body>
+</html>

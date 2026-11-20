@@ -91,8 +91,10 @@ export const ui = {
     // 冷加载竞态兜底：#loading 可能已被 boot 的 5 秒揭幕兜底移除（模块图加载慢于它，
     // ui.js 初始化时元素已不在）——重新取一次，取不到就安全跳过。
     // ★别再回落到初始化时缓存的元素引用：被移除后那只是个游离节点，改它的样式没有意义。
+    // ★载入动画（window.__SUTADYU_LOAD__）在跑时不要碰幕布：它要先把 100% 那段演完，
+    //   由 boot 的 finish()/reveal() 收尾；这里抢先隐藏会把庆祝动画剪掉。
     const el = document.getElementById('loading');
-    if (el) {
+    if (el && !window.__SUTADYU_LOAD__) {
       el.style.opacity = '0';
       el.style.visibility = 'hidden';
     }

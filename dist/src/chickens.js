@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { MeshBatch } from './util.js?v=1.8.14';
-import { STATUS } from './hub.js?v=1.8.14';
-import { isWalkable, groundHeight } from './collision.js?v=1.8.14';
-import { MAP, isOnBridge } from './config.js?v=1.8.14';
+import { MeshBatch } from './util.js?v=1.8.15';
+import { STATUS } from './hub.js?v=1.8.15';
+import { isWalkable, groundHeight } from './collision.js?v=1.8.15';
+import { MAP, isOnBridge } from './config.js?v=1.8.15';
 
 /* ------------------------------------------------------------------ *
  * 探针小鸡：一只鸡 = 一台服务器
@@ -56,7 +56,7 @@ export function buildSlots(count) {
     return seed / 4294967296;
   };
   // 每个新点位试多少个候选：谁离大家最远选谁。
-  // 1.8.14 起河判定带上了半径（河岸不能站），候选比之前少，前 48 个点要用更多候选才稳得住
+  // 1.8.15 起河判定带上了半径（河岸不能站），候选比之前少，前 48 个点要用更多候选才稳得住
   // 「40 台以内 ≥6.0」；之后间距本来就要逐级放宽，用 96 个就够（不必为 200 台白付 300 万次距离）。
   // ★按 slots.length 取值，前缀依旧稳定：前 N 个点与 buildSlots(N) 完全一致。
   const CAND = slots.length < 48 ? 320 : 96;

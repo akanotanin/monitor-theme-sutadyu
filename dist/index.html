@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#efd3a4" />
-<meta name="theme-version" content="1.8.14" />
+<meta name="theme-version" content="1.8.15" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23efd3a4'/%3E%3Crect x='5' y='13' width='22' height='12' fill='%23d98478'/%3E%3Crect x='8' y='17' width='5' height='6' fill='%23fff6dc'/%3E%3Crect x='19' y='17' width='5' height='6' fill='%23fff6dc'/%3E%3Crect x='4' y='8' width='24' height='6' fill='%23b85f49'/%3E%3Crect x='14' y='19' width='4' height='6' fill='%237b5b3e'/%3E%3C/svg%3E" />
 <title>Monitor</title>
 <style>
@@ -509,18 +509,40 @@
   #notice .close { margin-top: 12px; text-align: center; font-size: 11px; color: #7d6749; letter-spacing: 0.08em; }
 
   /* ---------------- 载入 ---------------- */
-  /* 入场幕布：没有任何文字，只是把画面从奶油色里淡出来 */
+  /* 入场：奶油色幕布上的一颗像素胶囊 —— 小鸡把木料搬过去，房子跟着进度一段段长起来，
+     100% 时开窗点灯、撒花，幕布才揭。画在 dist/src/loading.js（216×128 整数网格）。 */
   #loading {
     position: fixed; inset: 0; z-index: 40;
+    display: grid; place-items: center;
     background: #f0dcb8;
-    pointer-events: none;
+    pointer-events: auto;          /* 载入中吞掉点击，别让访客点到幕布后面的 3D 场景 */
     transition: opacity 0.9s cubic-bezier(0.4, 0, 0.2, 1);
     will-change: opacity;
   }
   #loading::after {
     content: ""; position: absolute; inset: 0;
     background: radial-gradient(120% 100% at 50% 30%, rgba(255, 250, 236, 0.9), rgba(240, 220, 184, 0) 70%);
+    pointer-events: none;
   }
+  .ld-stage {
+    position: relative; display: grid; justify-items: center; gap: 12px;
+    padding: 8px;
+  }
+  #ld-canvas {
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    pointer-events: auto;
+    cursor: default;
+    touch-action: manipulation;
+  }
+  .ld-tip {
+    margin: 0; font-size: 11.5px; letter-spacing: 0.22em; color: #7d6749;
+    opacity: 0; transform: translateY(2px);
+    transition: opacity 0.5s ease 0.15s, transform 0.5s ease 0.15s;
+  }
+  body.ld-ready .ld-tip { opacity: 0.9; transform: none; }
+  @media (max-height: 430px) { .ld-tip { display: none; } }
   #loading.done { opacity: 0; }
   /* 世界淡入：首帧先压暗一点点，再回到正常，避免「啪」地出现 */
   #scene { opacity: 0; transition: opacity 1.1s ease-out; }
@@ -617,11 +639,17 @@
     <div class="close">按 E 或 Esc 合上</div>
   </div>
 
-  <div id="loading"></div>
+  <div id="loading">
+    <div class="ld-stage">
+      <canvas id="ld-canvas" width="216" height="128" role="img"
+              aria-label="载入中：一只小鸡把木料搬过去，小镇的房子跟着进度一点点建起来"></canvas>
+      <p class="ld-tip">小镇正在醒来 …</p>
+    </div>
+  </div>
 
   <script type="importmap">
-    { "imports": { "three": "./vendor/three.module.js?v=1.8.14" } }
+    { "imports": { "three": "./vendor/three.module.js?v=1.8.15" } }
   </script>
-  <script type="module" src="./boot.js?v=1.8.14"></script>
+  <script type="module" src="./boot.js?v=1.8.15"></script>
 </body>
 </html>

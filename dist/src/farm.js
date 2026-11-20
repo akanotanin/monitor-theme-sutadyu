@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { MeshBatch } from './util.js?v=1.8.14';
-import { C, FARM, LAYOUT } from './config.js?v=1.8.14';
-import { addRectCollider } from './collision.js?v=1.8.14';
+import { MeshBatch } from './util.js?v=1.8.15';
+import { C, FARM, LAYOUT } from './config.js?v=1.8.15';
+import { addRectCollider } from './collision.js?v=1.8.15';
 
 /* ------------------------------------------------------------------ *
  * 农田：一垄垄翻好的土 + 四种作物 + 稻草人 + 农具

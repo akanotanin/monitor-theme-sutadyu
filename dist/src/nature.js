@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { MeshBatch, mulberry32 } from './util.js?v=1.8.14';
-import { C, MAP, P, LAYOUT, TREES, BUSHES, isInRiver } from './config.js?v=1.8.14';
-import { addCircleCollider } from './collision.js?v=1.8.14';
+import { MeshBatch, mulberry32 } from './util.js?v=1.8.15';
+import { C, MAP, P, LAYOUT, TREES, BUSHES, isInRiver } from './config.js?v=1.8.15';
+import { addCircleCollider } from './collision.js?v=1.8.15';
 
 /* ------------------------------------------------------------------ *
  * 树、灌木、花草、蘑菇、石头、倒木、云、蝴蝶

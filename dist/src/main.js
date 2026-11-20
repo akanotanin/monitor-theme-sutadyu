@@ -1,17 +1,17 @@
 import * as THREE from 'three';
-import { TownCamera } from './camera.js?v=1.8.14';
-import { buildWorld } from './world.js?v=1.8.14';
-import { Player } from './player.js?v=1.8.14';
-import { InteractionManager } from './interact.js?v=1.8.14';
-import { ui } from './ui.js?v=1.8.14';
-import { clamp } from './util.js?v=1.8.14';
-import { debugColliderCount, isWalkable, groundHeight } from './collision.js?v=1.8.14';
-import { isInRiver, LAYOUT } from './config.js?v=1.8.14';
-import { ServerFeed } from './hub.js?v=1.8.14';
-import { ChickenHerd } from './chickens.js?v=1.8.14';
-import { ProbeUI } from './probeui.js?v=1.8.14';
-import { ServerCards } from './cards.js?v=1.8.14';
-import { ProbePanel } from './panel.js?v=1.8.14';
+import { TownCamera } from './camera.js?v=1.8.15';
+import { buildWorld } from './world.js?v=1.8.15';
+import { Player } from './player.js?v=1.8.15';
+import { InteractionManager } from './interact.js?v=1.8.15';
+import { ui } from './ui.js?v=1.8.15';
+import { clamp } from './util.js?v=1.8.15';
+import { debugColliderCount, isWalkable, groundHeight } from './collision.js?v=1.8.15';
+import { isInRiver, LAYOUT } from './config.js?v=1.8.15';
+import { ServerFeed } from './hub.js?v=1.8.15';
+import { ChickenHerd } from './chickens.js?v=1.8.15';
+import { ProbeUI } from './probeui.js?v=1.8.15';
+import { ServerCards } from './cards.js?v=1.8.15';
+import { ProbePanel } from './panel.js?v=1.8.15';
 
 /* ------------------------------------------------------------------ *
  * 渲染器 / 场景 / 光照 —— 统一在这里初始化

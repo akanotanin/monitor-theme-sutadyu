@@ -9,9 +9,25 @@
  *   · /api/themes/<short>/config  → 主题设置（GET 读、PUT 写，一个站一份）
  *   · /api/nodes                  → 节点列表
  *   · ws /api/ws                  → 实时推送（发 {op:"get"} 要一份快照）
+ *
+ * 载入动画（src/loading.js）挂在最前面：它是纯 canvas、零依赖，先于 three 的
+ * 模块图跑起来；进度用的是真实的等待节点，不是编出来的时间轴。
  */
 
 const SHORT = 'sutadyu';
+
+/* 载入动画先起：拿不到元素/画布时 mount() 返回 null，后面所有进度调用都变成空操作 */
+let load = null;
+try {
+  const mod = await import('./src/loading.js?v=1.8.15');
+  load = mod.mount();
+} catch (err) {
+  console.warn('[sutadyu] 载入动画未启动', err);
+}
+const step = (v) => { try { load?.set(v); } catch { /* 进度不参与主线 */ } };
+
+step(0.12);
+setTimeout(() => { try { document.body.classList.add('ld-ready'); } catch { /* 纯装饰 */ } }, 800);
 
 const DEFAULTS = {
   viewHeight: '24',
@@ -80,6 +96,7 @@ async function loadConfig() {
 }
 
 const [config, me] = await Promise.all([loadConfig(), loadMe()]);
+step(0.42);
 // 预览/验收用：?labelMode=auto|always|near|dot 直接切名牌档位（不动站点配置）
 const forcedLabel = new URLSearchParams(location.search).get('labelMode');
 if (LABEL_MODES.includes(forcedLabel)) config.labelMode = forcedLabel;
@@ -103,17 +120,30 @@ if (siteName) {
 // 进场效果：主模块首帧渲染完会调用这个钩子；找不到 #boot 也能工作（主题用 #loading 幕布）
 const bootEl = document.getElementById('boot') || document.getElementById('loading');
 let revealed = false;
+const curtain = () => document.getElementById('boot') || document.getElementById('loading') || bootEl;
 const reveal = () => {
   if (revealed) return;
   revealed = true;
   document.body.classList.add('world-ready');
   // 元素到揭幕这一刻再取一次：理论上 boot 阶段已拿住，但若有重入/提前移除也能兜住
-  const el = document.getElementById('boot') || document.getElementById('loading') || bootEl;
+  const el = curtain();
   el?.classList.add('done');
-  setTimeout(() => el?.remove(), 1000);
+  setTimeout(() => el?.remove(), 1200);
 };
-window.__SUTADYU_BOOT_READY__ = reveal;
-// 兜底：主模块异常时最多 5 秒也揭幕，不会永远停在奶油色幕布
-setTimeout(reveal, 5000);
 
-await import('./src/main.js?v=1.8.14');
+/**
+ * 首帧就绪 → 让载入动画把最后一段演完（开窗点灯、撒花、100%）再揭幕。
+ * 载入动画没起来（老浏览器/模块异常）就直接揭幕，不能因为装饰拖住页面。
+ */
+let finishing = false;
+const finish = () => {
+  if (finishing || revealed) return;
+  finishing = true;
+  if (!load) { reveal(); return; }
+  try { load.done(reveal); } catch { reveal(); }
+};
+window.__SUTADYU_BOOT_READY__ = finish;
+// 兜底：主模块异常时最多 5 秒也要收场，不会永远停在奶油色幕布
+setTimeout(finish, 5000);
+
+await import('./src/main.js?v=1.8.15');
