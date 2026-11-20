@@ -19,7 +19,7 @@ const SHORT = 'sutadyu';
 /* 载入动画先起：拿不到元素/画布时 mount() 返回 null，后面所有进度调用都变成空操作 */
 let load = null;
 try {
-  const mod = await import('./src/loading.js?v=1.8.15');
+  const mod = await import('./src/loading.js?v=1.8.16');
   load = mod.mount();
 } catch (err) {
   console.warn('[sutadyu] 载入动画未启动', err);
@@ -143,7 +143,16 @@ const finish = () => {
   try { load.done(reveal); } catch { reveal(); }
 };
 window.__SUTADYU_BOOT_READY__ = finish;
-// 兜底：主模块异常时最多 5 秒也要收场，不会永远停在奶油色幕布
-setTimeout(finish, 5000);
+// 兜底只兜「真的挂了」：主模块 import 抛错会走到下面的 catch 立刻揭幕；
+// 这里再留一道很宽的上限，防止模块图永远不 resolve（网络半死）。
+// 注意不要调小 —— 线上实测首帧要 8~10 秒，兜底太短会把幕布提前撤掉，
+// 访客就对着空场景干等了。
+setTimeout(finish, 25000);
 
-await import('./src/main.js?v=1.8.15');
+try {
+  await import('./src/main.js?v=1.8.16');
+} catch (err) {
+  // 主模块起不来：别把访客困在奶油色幕布上，直接揭幕（场景会是空的，但至少不假装在加载）
+  console.error('[sutadyu] 小镇主模块加载失败', err);
+  reveal();
+}

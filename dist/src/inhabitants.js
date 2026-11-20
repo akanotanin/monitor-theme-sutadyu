@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { createCharacter, animateIdle } from './character.js?v=1.8.15';
-import { dampAngle } from './util.js?v=1.8.15';
-import { NPCS } from './config.js?v=1.8.15';
-import { addCircleCollider } from './collision.js?v=1.8.15';
+import { createCharacter, animateIdle } from './character.js?v=1.8.16';
+import { dampAngle } from './util.js?v=1.8.16';
+import { NPCS } from './config.js?v=1.8.16';
+import { addCircleCollider } from './collision.js?v=1.8.16';
 
 /* ------------------------------------------------------------------ *
  * 三位村民：露露、阿禾、诺亚
