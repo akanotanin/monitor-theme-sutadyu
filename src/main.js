@@ -406,7 +406,8 @@ function resize() {
 window.addEventListener('resize', resize);
 
 let lastTime = performance.now();
-let elapsed = 0;
+let elapsed = 0;        // 动画时钟（被钳到 50 ms/帧，慢机上会落后于墙钟——这是刻意的）
+let elapsedReal = 0;    // 真实墙钟秒数（帧率评估用它，别拿动画时钟当秒表）
 let frames = 0;
 let fpsAccum = 0;
 let fps = 0;
@@ -415,6 +416,25 @@ let autoTarget = null;
 const QUALITY_PARAM = new URLSearchParams(location.search).get('quality');
 let lowAccum = 0;
 let lowQuality = THEME.lowQuality === true;
+
+/**
+ * 帧率自降的判定（纯函数，便于离线验证边界；main 的帧循环只负责喂数据）。
+ * 规则：启动 5 秒后才开始看；窗口帧率 < 26 就累加**真实经过时间**，
+ * 连续 3 秒低于阈值才降档（避免一次 GC / 切标签页就误降）。帧率回到 26 以上清零。
+ * @param {{realDt:number, fps:number, elapsedReal:number}} s
+ * @returns {boolean} 是否应该降档
+ */
+export function shouldDropQuality(s) {
+  if (!(s.elapsedReal > 5)) return false;
+  if (!(s.fps > 0) || s.fps >= 26) { lowAccum = 0; return false; }
+  // 封顶 1 s：切标签页回来 rawDt 可能是几十秒，不能一帧就判定「一直很卡」；
+  // 但也不能压得太狠——1 fps 设备每帧 1 秒，封 0.5 s 会让它要 6 帧（≈6 秒）才凑够 3。
+  lowAccum += Math.min(1, Math.max(0, s.realDt));
+  return lowAccum > 3;
+}
+
+/** 验收用：把累加器清零（check-theme 里连测多个场景时用） */
+export function resetQualityMeter() { lowAccum = 0; }
 
 function applyLowQuality() {
   if (lowQuality) return;
@@ -437,6 +457,7 @@ function frame(now) {
   lastTime = now;
   const dt = Math.min(0.05, Math.max(0.0001, rawDt));
   elapsed += dt;
+  elapsedReal += Math.max(0, rawDt);
 
   frames++;
   fpsAccum += rawDt;
@@ -445,11 +466,8 @@ function frame(now) {
     frames = 0;
     fpsAccum = 0;
   }
-  if (QUALITY_PARAM !== 'high' && !lowQuality && elapsed > 5) {
-    if (fps > 0 && fps < 26) {
-      lowAccum += dt;
-      if (lowAccum > 3) applyLowQuality();
-    } else lowAccum = 0;
+  if (QUALITY_PARAM !== 'high' && !lowQuality) {
+    if (shouldDropQuality({ realDt: rawDt, fps, elapsedReal })) applyLowQuality();
   }
 
   // 面板/公告是模态的：触屏摇杆不能在后层继续推着玩家（第二根手指压在摇杆上的场景）
@@ -637,6 +655,7 @@ const api = {
     return { viewHeight: camRig.viewHeight };
   },
   cards: serverCards,
+  herd,           // 验收/调试：卡片层的 update(items, …) 需要真实的 items（含 server 引用）
   panel,          // 验收/调试：直接驱动列表（模拟 WS 推送、检查节点复用）
 };
 window.__TOWN__ = api;

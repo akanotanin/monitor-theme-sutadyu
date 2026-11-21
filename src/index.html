@@ -4,7 +4,8 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#efd3a4" />
-<meta name="theme-version" content="1.8.17" />
+<meta name="theme-version" content="dev" />
+<!-- 上面这行只是占位：`node tools/build.mjs` 会按 theme.json 的 version 改写它（dist/ 里是真版本号）。 -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23efd3a4'/%3E%3Crect x='5' y='13' width='22' height='12' fill='%23d98478'/%3E%3Crect x='8' y='17' width='5' height='6' fill='%23fff6dc'/%3E%3Crect x='19' y='17' width='5' height='6' fill='%23fff6dc'/%3E%3Crect x='4' y='8' width='24' height='6' fill='%23b85f49'/%3E%3Crect x='14' y='19' width='4' height='6' fill='%237b5b3e'/%3E%3C/svg%3E" />
 <title>Monitor</title>
 <style>
@@ -139,7 +140,11 @@
   #plist.show .sheet { transform: translateY(0) scale(1); }
   /* 详情态：用更高的 sheet，图表才有地方站 */
   #plist.is-detail .sheet { max-height: min(92vh, 980px); }
-  #plist.is-detail .note { display: none; }
+  /* 只藏「sheet 页脚那行按键说明」。这里是直接子选择器：
+     写成 `#plist.is-detail .note` 会连 #dcharts 里的状态提示（正在读 / 读取失败 /
+     没有 ping 任务）一起藏掉——那三条提示的特异性比 `#dcharts .note` 高，
+     详情页每次打开都是空白，连「读取超时」都看不见。 */
+  #plist.is-detail > .sheet > .note { display: none; }
 
   #plist header {
     display: flex; align-items: center; gap: 12px;
@@ -277,6 +282,10 @@
     background: linear-gradient(#fffdf4, #f3e6c9);
     border: 1px solid rgba(120, 88, 56, 0.3); border-bottom-width: 2px; border-radius: 4px;
   }
+  /* 页脚提示按输入方式换说法：手机上写「Tab / Esc」是纯噪音（没有这两个键） */
+  #plist .note-touch { display: none; }
+  body.touch #plist .note-kb { display: none; }
+  body.touch #plist .note-touch { display: inline; }
 
   /* ---- 详情页：九格信息 + 页签 + 时间范围 + 折线图 ---- */
   #plist-detail {
@@ -410,7 +419,7 @@
   .chips .chip b { margin-right: 3px; font-size: 10px; }
 
   .pd-empty { padding: 26px 8px; text-align: center; font-size: 12px; color: #7d6749; }
-  #dcharts .note { margin: 0; padding: 14px 2px; font-size: 12px; color: #7d6749; }
+  #dcharts .note { display: block; margin: 0; padding: 14px 2px; border-top: 0; font-size: 12px; color: #7d6749; }
 
   /* 顶栏的列表按钮 */
   .probe-bar .pp-open,
@@ -739,7 +748,7 @@
       </header>
       <div id="plist-body"></div>
       <div id="plist-detail" class="hidden"></div>
-      <p class="note">点任意一张卡片看这台机器的详情 · Tab 开关本面板 · Esc 关闭</p>
+      <p class="note"><span class="note-kb">点任意一张卡片看这台机器的详情 · Tab 开关本面板 · Esc 关闭</span><span class="note-touch">点任意一张卡片看这台机器的详情 · 点右上角 ✕ 关闭</span></p>
     </div>
   </div>
 

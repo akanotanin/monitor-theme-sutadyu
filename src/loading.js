@@ -997,7 +997,9 @@ export function mount() {
     if (phase === 'load') {
       // 真实进度是下限；等得久了就往上慢慢蹭一点，但永不越过 88%
       // （这一步只为「别卡在 12% 干等」，不会替首帧宣布完成）
-      const idle = last ? (now - lastSetAt) / 1000 : 0;
+      // 闸门看的是「上一次收到真实进度距今多久」：以前写的是刚赋值的 `last`（恒为真），
+      // 三元分支是死代码，注释与实现对不上。
+      const idle = lastSetAt ? (now - lastSetAt) / 1000 : 0;
       if (target < CREEP_CAP) {
         target = Math.min(CREEP_CAP, target + dt * 0.030 * clamp(idle / 0.6, 0, 1));
       }
@@ -1005,6 +1007,9 @@ export function mount() {
       if (target - shown < 0.004) shown = target;
     } else if (phase === 'celebrate') {
       phaseT += dt;
+      // 让进度条把最后一段走完。以前 celebrate 期间完全不推进 shown，
+      // done() 那一刻停在多少（常见 42%~88%）就冻在那儿 0.9 s，然后「啪」地跳到 100%。
+      shown += (1 - shown) * (1 - Math.exp(-dt * 6));
       if (phaseT > 0.9) shown = 1;
       if (phaseT > 1.1 && endCb) {
         const cb = endCb;

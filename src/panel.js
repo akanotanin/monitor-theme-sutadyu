@@ -223,14 +223,56 @@ export class ProbePanel {
         this.showList();
         return;
       }
-      // 详情页不整体重绘，避免打断看图；只刷新标题里的状态
+      // 详情页不整体重绘，避免打断看图：标题 + 九格做增量刷新。
+      // 九格以前完全不刷：WS 每 2 s 推一帧、数值都在变，用户盯着详情页却看到
+      // CPU/内存/流量永远停在打开那一刻，而同一屏的标题状态却在变——「部分刷新」
+      // 比全不刷新更容易误读。这里只改文本，不动 DOM 结构（浏览器也不重排格子）。
       if (this.titleEl) {
         const st = STATUS[srv.status] || STATUS.unknown;
         this.titleEl.innerHTML = `🐔 ${escapeHtml(srv.name)} <span class="pd-state" style="color:${st.css}">${st.label}</span>`;
       }
+      this._refreshFacts(srv);
     } else if (this.view === 'list') {
       this.renderList();
     }
+  }
+
+  /**
+   * 详情九格的增量刷新：按 data-k 找格子，只改变化的 <dd>。
+   * 键取自字段名（与 renderDetail 同源）；字段增减 / 改名时不猜位置，
+   * 只重建 <dl class="pgrid"> 那一块（不碰页签、时间档与图表）。
+   */
+  _refreshFacts(server) {
+    if (!this.detailEl || this._factKey !== server.id) return;   // 详情页已换成别的机器/已销毁
+    const facts = this._factsOf(server);
+    const cells = this.detailEl.querySelectorAll('.pgrid .cell');
+    // 结构变了（例如 swap 从无到有，「内存」格改名成「内存 / 交换分区」）：
+    // 增量改不了键，退回重建九格 —— 但不能整页重绘，那会销毁图表、把滚动位置也冲掉。
+    if (cells.length !== facts.length) {
+      this._renderFacts(facts);
+      return;
+    }
+    for (const [k, v, title] of facts) {
+      const dd = this.detailEl.querySelector(`.cell[data-k="${CSS.escape(k)}"] dd`);
+      if (!dd) {
+        this._renderFacts(facts);
+        return;
+      }
+      const next = String(v ?? '—');
+      if (dd.textContent !== next) dd.textContent = next;
+      const nextTitle = String(title || v || '');
+      if (dd.title !== nextTitle) dd.title = nextTitle;
+    }
+  }
+
+  /** 只重建九格（不动页签 / 时间档 / 图表） */
+  _renderFacts(facts) {
+    this._facts = facts;
+    const dl = this.detailEl?.querySelector('.pgrid');
+    if (!dl) return;
+    dl.innerHTML = facts
+      .map(([k, v, title]) => `<div class="cell" data-k="${escapeHtml(k)}"><dt>${escapeHtml(k)}</dt><dd title="${escapeHtml(String(title || v))}">${escapeHtml(String(v))}</dd></div>`)
+      .join('');
   }
 
   /** 站点关了公开页（/api/nodes 401）：列表改成「需要登录」的说法 */
@@ -308,6 +350,10 @@ export class ProbePanel {
     this.root?.classList.remove('is-detail');
     this.view = 'list';
     this.selectedId = null;
+    this._factKey = null;
+    // 与 hide() 同理：从详情退回列表也要作废在途请求，否则它还会往已隐藏的
+    // #plist-detail 里画图（详情容器此时只是隐藏，节点仍然在）。
+    this.detailToken++;
     this._destroyCharts();
     this.detailCache.clear();   // 回到列表就把详情数据丢掉：下次点开重新读，别拿几分钟前的曲线
     if (this.titleEl) this.titleEl.textContent = '🖥 探针列表';
@@ -341,15 +387,14 @@ export class ProbePanel {
     return this._rangesCache;
   }
 
-  /** 详情主体：九格信息 + 页签 + 时间范围 + 图表 */
-  renderDetail(server) {
-    const m = server;
+  /** 详情九格的字段表（渲染与增量刷新共用同一份，避免两处口径漂移） */
+  _factsOf(m) {
     const memTotal = m.memTotal;
     const diskTotal = m.diskTotal;
     const swapTotal = m.swapTotal;
     const loads = Array.isArray(m.loadAll) && m.loadAll.length ? m.loadAll.map((v) => Number(v).toFixed(2)) : null;
     // 九格（固定字段与顺序）：系统 / 架构 / 负载 / CPU / 内存·交换分区 / 硬盘 / TCP·UDP / 今日流量 / 在线时间
-    const facts = [
+    return [
       ['系统', [shortOs(m.os), m.kernel].filter(Boolean).join(' · ')],
       ['架构', [m.arch, m.virt && m.virt !== 'none' ? m.virt.toUpperCase() : '', m.procs ? `${m.procs} 进程` : ''].filter(Boolean).join(' · ')],
       ['负载', m.load !== null ? m.load.toFixed(2) : null, loads ? `1 / 5 / 15 分钟：${loads.join(' ')}` : ''],
@@ -362,10 +407,17 @@ export class ProbePanel {
       ['今日流量', m.dayRx !== null || m.dayTx !== null ? `↓ ${fmtGb(m.dayRx)} · ↑ ${fmtGb(m.dayTx)}` : null],
       ['在线时间', onlineFor(m)],
     ].filter(([, v]) => v !== null && v !== undefined && v !== '');
+  }
+
+  /** 详情主体：九格信息 + 页签 + 时间范围 + 图表 */
+  renderDetail(server) {
+    const facts = this._factsOf(server);
+    this._factKey = server.id;
+    this._facts = facts;
 
     this.detailEl.innerHTML = `
       <dl class="pgrid">${facts
-        .map(([k, v, title]) => `<div class="cell"><dt>${escapeHtml(k)}</dt><dd title="${escapeHtml(String(title || v))}">${escapeHtml(String(v))}</dd></div>`)
+        .map(([k, v, title]) => `<div class="cell" data-k="${escapeHtml(k)}"><dt>${escapeHtml(k)}</dt><dd title="${escapeHtml(String(title || v))}">${escapeHtml(String(v))}</dd></div>`)
         .join('')}</dl>
       <div class="tabs" id="dtabs">
         <button type="button" class="tab${this.nodeTab === 'res' ? ' on' : ''}" data-tab="res">资源</button>
@@ -428,7 +480,11 @@ export class ProbePanel {
           signal: ac.signal,
         });
         if (!res.ok) throw new Error('HTTP ' + res.status);
-        this.detailCache.set(cacheKey, { at: Date.now(), payload: await res.json() });
+        const payload = await res.json();
+        // 写缓存必须在「这次请求还有效」之后：否则关面板时正在飞的这一帧
+        // 会把刚 clear() 掉的缓存重新填回去（下次打开拿到的是上一次的旧曲线）。
+        if (token !== this.detailToken) return;
+        this.detailCache.set(cacheKey, { at: Date.now(), payload });
       } catch (err) {
         // 超时别把英文 AbortError 原样拼给访客看（「The user aborted a request.」不像人能读的提示）
         const msg = ac.signal.aborted ? '读取超时（15 秒无响应）' : err.message;
@@ -474,9 +530,9 @@ export class ProbePanel {
         (v) => (v >= 1024 ? `${(v / 1024).toFixed(2)} MB/s` : `${v.toFixed(1)} KB/s`),
         // 轴刻度也要跟着换单位：缺这一格会印出「2.5k KB/s」这种双单位
         (v) => (v >= 1024 ? `${(v / 1024).toFixed(1)} MB/s` : `${Math.round(v)} KB/s`)],
-      ['TCP / UDP 连接', [['TCP', '#4a86c8', (x) => x.tcp], ['UDP', '#c4555f', (x) => x.udp]], connTop, '', (v) => String(v)],
-      [server.procs ? `进程 · ${server.procs}` : '进程', [['进程', '#9b6fbf', (x) => x.procs]], procTop, '', (v) => String(v)],
-      ['CPU', [['CPU', '#4a86c8', (x) => x.cpu]], cpuTop, '%', (v) => `${Number(v).toFixed(1)}%`],
+      ['TCP / UDP 连接', [['TCP', '#4a86c8', (x) => x.tcp], ['UDP', '#c4555f', (x) => x.udp]], connTop, '', (v) => String(v), (v) => String(Math.round(v))],
+      [server.procs ? `进程 · ${server.procs}` : '进程', [['进程', '#9b6fbf', (x) => x.procs]], procTop, '', (v) => String(v), (v) => String(Math.round(v))],
+      ['CPU', [['CPU', '#4a86c8', (x) => x.cpu]], cpuTop, '%', (v) => `${Number(v).toFixed(1)}%`, (v) => `${Math.round(v)}%`],
       [server.memTotal ? `内存 · ${fmtBytes(server.memTotal)}` : '内存', [['内存', '#c9782f', (x) => x.mem_used]], server.memTotal || null, '', fmtBytes, fmtBytes],
       [server.diskTotal ? `硬盘 · ${fmtBytes(server.diskTotal)}` : '硬盘', [['硬盘', '#5aa860', (x) => x.disk_used]], server.diskTotal || null, '', fmtBytes, fmtBytes],
     ];
@@ -580,12 +636,24 @@ export class ProbePanel {
     this.open = false;
     this.view = 'list';
     this.selectedId = null;
+    this._factKey = null;
+    // 在途请求作废：以前只清了缓存、没递增 token，于是「关面板时正在飞的那一帧」
+    // 会把刚清掉的缓存写回去，还继续往已隐藏的详情页画 6 张图表（白做 6 次光栅化）。
+    this.detailToken++;
     this._destroyCharts();
     this.detailCache.clear();
-    // 关掉面板后焦点回到打开它的地方，别把键盘用户扔在 body 上
+    // 焦点归还：面板是 visibility 隐藏（不是 display:none），隐藏后仍能持有焦点。
+    // 先看焦点是否还留在面板里 —— 那种情况 _prevFocus 往往就是面板内的按钮，
+    // 直接还给它等于把人留在不可见的对话框里。这种情况一律交回 body。
+    const active = document.activeElement;
+    const stuckInside = !!(active && this.root?.contains(active));
     const back = this._prevFocus;
     this._prevFocus = null;
-    if (back && back !== document.body && document.contains(back) && typeof back.focus === 'function') {
+    if (stuckInside) {
+      try { active.blur(); } catch { /* 忽略 */ }
+    }
+    if (back && back !== document.body && !this.root?.contains(back)
+      && document.contains(back) && typeof back.focus === 'function') {
       try { back.focus({ preventScroll: true }); } catch { /* 忽略 */ }
     }
   }

@@ -32,6 +32,15 @@ const shortNum = (v) => {
   return v.toFixed(1);
 };
 
+// 带单位的轴刻度：**不能再走 k**。「延迟 1500 ms」拼成「1.5kms」是两个单位粘在一起
+// （1200~9999 ms 的线路真会出现）。有单位就只收小数，不进位。
+const numInUnit = (v) => {
+  if (v === null || v === undefined || !isFinite(v)) return '—';
+  const a = Math.abs(v);
+  if (a >= 10) return String(Math.round(v));
+  return v.toFixed(1);
+};
+
 function fmtBytes(v) {
   if (v === null || v === undefined || !isFinite(v)) return '—';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -86,18 +95,26 @@ export function drawLine(canvas, series, opt = {}) {
   }
   const tss = opt.hover ? [...rows.keys()].sort((a, b) => a - b) : [];
   const fmt = opt.format || ((v) => (v == null || !isFinite(v) ? '—' : `${shortNum(v)}${opt.unit || ''}`));
-  const axisFmt = opt.axisFormat || ((v) => `${shortNum(v)}${opt.unit || ''}`);
+  // 轴刻度：有单位时不进 k（否则「1.5kms」「3kKB/s」这种双单位），没单位才用 shortNum
+  const axisFmt = opt.axisFormat
+    || (opt.unit ? (v) => `${numInUnit(v)}${opt.unit}` : (v) => shortNum(v));
   let cursor = null;
 
   const paint = () => {
     const k = fitCanvas(canvas, W, H);
     c.setTransform(k, 0, 0, k, 0, 0);
     c.clearRect(0, 0, W, H);
-
     if (!clean.length) {
       c.fillStyle = 'rgba(90, 68, 46, 0.45)';
       c.font = '11px "PingFang SC", system-ui, sans-serif';
       c.fillText('暂无数据', padL, H / 2);
+      return;
+    }
+    if (ts1 === ts0) {
+      // 只有一个采样点：画出来也读不出趋势（x 固定落在 0.5），说明白比画个孤点好
+      c.fillStyle = 'rgba(90, 68, 46, 0.45)';
+      c.font = '11px "PingFang SC", system-ui, sans-serif';
+      c.fillText('数据点不足（只有一个采样）', padL, H / 2);
       return;
     }
 
@@ -164,7 +181,23 @@ export function drawLine(canvas, series, opt = {}) {
   paint();
   requestAnimationFrame(paint);
 
-  if (!opt.hover) return null;
+  // 位图按 CSS 宽度 × dpr 算（fitCanvas），但以前只在绘制那一刻量一次：
+  // 面板宽度变化（窗口 resize / 手机旋转 / 详情列数从 2 变 1）后 canvas.width
+  // 仍是旧值，位图被 CSS 拉宽 → 线变模糊、字形拉伸。挂 ResizeObserver 重画。
+  let ro = null;
+  if (typeof ResizeObserver === 'function' && canvas.parentElement) {
+    let lastW = canvas.getBoundingClientRect().width;
+    ro = new ResizeObserver(() => {
+      const w = canvas.getBoundingClientRect().width;
+      if (Math.abs(w - lastW) < 0.5) return;   // 只认真的宽度变化（高度由宽度推）
+      lastW = w;
+      paint();
+    });
+    ro.observe(canvas.parentElement);
+  }
+  const stopResize = () => { try { ro?.disconnect(); } catch { /* 已断 */ } ro = null; };
+
+  if (!opt.hover) return { destroy: stopResize };
 
   // ---- 鼠标浮框 ----
   const tip = document.createElement('div');
@@ -205,7 +238,14 @@ export function drawLine(canvas, series, opt = {}) {
   const leave = () => { cursor = null; tip.hidden = true; paint(); };
   canvas.addEventListener('mousemove', move);
   canvas.addEventListener('mouseleave', leave);
-  return { destroy: () => { canvas.removeEventListener('mousemove', move); canvas.removeEventListener('mouseleave', leave); tip.remove(); } };
+  return {
+    destroy: () => {
+      stopResize();
+      canvas.removeEventListener('mousemove', move);
+      canvas.removeEventListener('mouseleave', leave);
+      tip.remove();
+    },
+  };
 }
 
-export { fmtBytes, shortNum, axisTime };
+export { fmtBytes, shortNum, axisTime, numInUnit };

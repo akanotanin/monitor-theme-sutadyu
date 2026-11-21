@@ -45,6 +45,8 @@ const REDUCE_MOTION = typeof matchMedia === 'function' && matchMedia('(prefers-r
 const CLIP_NARROW = 700;     // 与 CSS 断点 / main.js 的 NARROW_VIEW 同口径
 const CLIP_HIDE = 0.15;   // 切掉 15% 就收（约 33px，圆角已经缺了）
 const CLIP_SHOW = 0.05;   // 回到 5% 以内才重新展开（滞回）
+// 卡面贴图闲置多久后释放显存：停留在这个时长内是为了「来回走两步」不反复重画
+const TEX_IDLE_MS = 60_000;
 
 const FONT = '"PingFang SC","Microsoft YaHei","Hiragino Sans GB",system-ui,sans-serif';
 const COL_BG = '#fffaf0';
@@ -82,10 +84,33 @@ function newCanvas(hDesign) {
   return { canvas, ctx };
 }
 
+/**
+ * 圆角矩形路径：优先用原生 roundRect，没有就手写（Safari < 16.4 / Firefox < 112
+ * 没有 roundRect）。以前直接调原生方法，老 Safari 上抛 TypeError，被 _emit 的
+ * try/catch 吞成一条 console.warn —— 表现是「卡片一张都不出现」，极难定位。
+ */
+function roundRectPath(p, x, y, w, h, r) {
+  if (typeof p.roundRect === 'function') {
+    p.roundRect(x, y, w, h, r);
+    return;
+  }
+  const rr = Math.max(0, Math.min(r, w / 2, h / 2));
+  p.moveTo(x + rr, y);
+  p.lineTo(x + w - rr, y);
+  p.arcTo(x + w, y, x + w, y + rr, rr);
+  p.lineTo(x + w, y + h - rr);
+  p.arcTo(x + w, y + h, x + w - rr, y + h, rr);
+  p.lineTo(x + rr, y + h);
+  p.arcTo(x, y + h, x, y + h - rr, rr);
+  p.lineTo(x, y + rr);
+  p.arcTo(x, y, x + rr, y, rr);
+  p.closePath();
+}
+
 /** 卡片外轮廓：圆角矩形 + 底部小指针。描边和填充走同一条路径，接缝不露线 */
 function cardPath(bodyH) {
   const p = new Path2D();
-  p.roundRect(3, 3, DW - 6, bodyH - 6, 16);
+  roundRectPath(p, 3, 3, DW - 6, bodyH - 6, 16);
   const cx = DW / 2;
   const base = bodyH - 3;
   p.moveTo(cx - NOTCH_W / 2, base - 6);
@@ -114,13 +139,13 @@ function paintFrame(ctx, bodyH) {
 function bar(ctx, x, y, w, h, pct, color) {
   ctx.fillStyle = COL_TRACK;
   ctx.beginPath();
-  ctx.roundRect(x, y, w, h, h / 2);
+  roundRectPath(ctx, x, y, w, h, h / 2);
   ctx.fill();
   const p = Math.max(0, Math.min(1, pct / 100));
   if (p > 0) {
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.roundRect(x, y, Math.max(h, w * p), h, h / 2);
+    roundRectPath(ctx, x, y, Math.max(h, w * p), h, h / 2);
     ctx.fill();
   }
 }
@@ -181,8 +206,18 @@ function fmtBytesShort(b) {
   if (b === null || b === undefined || !isFinite(b)) return '—';
   if (b >= 1099511627776) return `${trimZero((b / 1099511627776).toFixed(1))}T`;
   if (b >= 1073741824) return `${trimZero((b / 1073741824).toFixed(1))}G`;
-  if (b >= 1048576) return `${Math.round(b / 1048576)}M`;
-  if (b >= 1024) return `${Math.round(b / 1024)}K`;
+  // 进位边界：1073741823 B 是 1023.99 M，四舍五入成「1024M」——量级读起来是错的，
+  // 应该在进到 1024M 之前就升到 G 档（1.0G）。
+  if (b >= 1048576) {
+    const mb = Math.round(b / 1048576);
+    if (mb >= 1024) return `${trimZero((b / 1073741824).toFixed(1))}G`;
+    return `${mb}M`;
+  }
+  if (b >= 1024) {
+    const kb = Math.round(b / 1024);
+    if (kb >= 1024) return `${Math.round(b / 1048576)}M`;
+    return `${kb}K`;
+  }
   return `${Math.round(b)}B`;
 }
 
@@ -207,6 +242,17 @@ function trafficColor(server) {
   if (ratio >= 0.95) return '#d1665c';
   if (ratio >= 0.8) return '#d9a740';
   return COL_DIM;
+}
+
+/** 流量警戒档位（0 正常 / 1 琥珀 / 2 红）：并进 sigOf，跨阈值才重画 */
+function trafficTier(server) {
+  const used = server.trafficUsed;
+  const limit = server.trafficLimit;
+  if (used === null || used === undefined || !(limit > 0)) return 0;
+  const ratio = used / limit;
+  if (ratio >= 0.95) return 2;
+  if (ratio >= 0.8) return 1;
+  return 0;
 }
 
 /** 第一行：状态点 + 名字 + 状态文字（+ 延迟；名字按剩余宽度截断） */
@@ -405,6 +451,10 @@ function sigOf(server) {
     server.dayTx === null || server.dayTx === undefined ? null : fmtBytesShort(server.dayTx),
     server.trafficUsed === null || server.trafficUsed === undefined ? null : fmtBytesShort(server.trafficUsed),
     server.trafficLimit === null || server.trafficLimit === undefined ? null : fmtBytesShort(server.trafficLimit),
+    // 警戒档位必须单独入 sig：fmtBytesShort 的精度是 0.1G，配额 500G 时
+    // 用量 79.96G→80.04G（跨 80%）印出来都是「80」，字符串不变就不重画 →
+    // 警戒色迟到整个阈值。档位进 sig 后跨 80%/95% 必变。
+    trafficTier(server),
   ]);
 }
 
@@ -434,6 +484,15 @@ export class ServerCards {
     return { sprite, tex };
   }
 
+  /** 空卡面：贴图等到「第一次真的要显示」时才画（见 sync 的注释） */
+  _makeEmptySprite() {
+    const mat = new THREE.SpriteMaterial({ map: null, transparent: true, depthTest: false, depthWrite: false, toneMapped: false, opacity: 0 });
+    const sprite = new THREE.Sprite(mat);
+    sprite.renderOrder = 30;
+    sprite.visible = false;
+    return sprite;
+  }
+
   /**
    * 把 sprite 换成新画布。
    * 注意：three r169 下「改 texture.image + needsUpdate」不会重传 GL 贴图
@@ -444,14 +503,25 @@ export class ServerCards {
     if (which === 'card') {
       card.sprite.material.map = next;
       card.sprite.material.needsUpdate = true;
-      card.tex.dispose();
+      card.tex?.dispose();
       card.tex = next;
     } else {
       card.dot.material.map = next;
       card.dot.material.needsUpdate = true;
-      card.dotTex.dispose();
+      card.dotTex?.dispose();
       card.dotTex = next;
     }
+  }
+
+  /** 释放卡面贴图（回到「从没画过」的状态：回到可视集合时再惰性重画） */
+  _dropTexture(card) {
+    if (!card.tex) return;
+    card.sprite.material.map = null;
+    card.sprite.material.needsUpdate = true;
+    card.sprite.visible = false;      // 没有 map 的 Sprite 会渲染成一块白方块，先收起来
+    card.tex.dispose();
+    card.tex = null;
+    card.texTier = null;
   }
 
   /** 数据变了才重画卡片 */
@@ -461,8 +531,8 @@ export class ServerCards {
       if (ids.has(id)) continue;
       this.group.remove(card.sprite);
       this.group.remove(card.dot);
-      card.tex.dispose();
-      card.dotTex.dispose();
+      card.tex?.dispose();
+      card.dotTex?.dispose();
       // 贴图之外，SpriteMaterial 也是要释放的（随机器增删累积，虽然量小但不是免费）
       card.sprite.material?.dispose();
       card.dot.material?.dispose();
@@ -471,17 +541,20 @@ export class ServerCards {
     for (const server of servers) {
       let card = this.cards.get(server.id);
       if (!card) {
-        const canvas = drawCompact(server);
-        const { sprite, tex } = this._makeSprite(canvas);
+        // ★卡面贴图不在这里画：200 台站点会常驻 271 MB canvas 显存，而同屏只显示
+        // 8~14 张——绝大多数贴图从未被显示过，还会让 iOS 撞上 canvas 预算、
+        // herdSyncMs 涨到近 1 秒。这里只建状态点（168×168，小且一定会用到），
+        // 卡面等第一次进入可视集合时再惰性绘制（update() / _redraw）。
+        const sprite = this._makeEmptySprite();
         const { sprite: dot, tex: dotTex } = this._makeSprite(drawDot(server));
         dot.scale.set(DOT_WORLD, DOT_WORLD, 1);
         dot.visible = false;
         this.group.add(sprite);
         this.group.add(dot);
-        const aspect = canvas.height / canvas.width;
+        const aspect = (C_BODY + NOTCH_H) / DW;
         const h = W_COMPACT * aspect;
         sprite.scale.set(W_COMPACT, h, 1);
-        card = { sprite, tex, dot, dotTex, dotSig: server.status, sig: sigOf(server), tier: 'compact', op: 0, dotOp: 0, clipOp: 1, clipped: false, w: W_COMPACT, h, aspect, gap: 0.72, pending: false };
+        card = { sprite, tex: null, texTier: null, dot, dotTex, dotSig: server.status, sig: sigOf(server), tier: 'compact', op: 0, dotOp: 0, clipOp: 1, clipped: false, w: W_COMPACT, h, aspect, gap: 0.72, pending: true, idleSince: 0 };
         this.cards.set(server.id, card);
       }
       // 状态点只取决于 status：CPU 抖一下/网速换档时重画 168×168 贴图纯属浪费
@@ -493,7 +566,7 @@ export class ServerCards {
       const sig = sigOf(server);
       if (sig !== card.sig) {
         card.sig = sig;
-        card.pending = true;                              // 重画排队，避免一次刷新画几十张
+        if (card.tex) card.pending = true;                // 重画排队，避免一次刷新画几十张
       }
     }
   }
@@ -501,6 +574,7 @@ export class ServerCards {
   _redraw(card, server) {
     const canvas = card.tier === 'full' ? drawFull(server) : drawCompact(server);
     this._setTexture(card, 'card', canvas);
+    card.texTier = card.tier;
     card.aspect = canvas.height / canvas.width;
   }
 
@@ -657,15 +731,26 @@ export class ServerCards {
         dotOp = inBudget ? 0 : 1;
       }
 
-      if (tier && tier !== card.tier) {
+      if (tier && tier !== card.texTier) {
         card.tier = tier;
-        card.pending = false;   // 顺手把最新数据画上
+        // 档位变了 / 从没画过：贴图必须落笔（紧凑↔展开是两种版式）。
+        // 这一支不吃 redrawBudget：同屏允许出卡的张数本身已有上限（8~14），
+        // 与小站点原来的行为等价，只是不再为看不见的机器白画。
+        card.pending = false;
         this._redraw(card, server);
-      } else if (card.pending && redrawBudget > 0) {
+      } else if (tier && card.pending && redrawBudget > 0) {
+        // 数据变了：排队重画，避免一次推送画几十张造成顿卡
         card.pending = false;
         redrawBudget--;
         this._redraw(card, server);
+      } else if (!tier && card.tex) {
+        // 退出可视集合（收成状态点）：先用旧贴图占位（淡出时不出白块），
+        // 闲置超过 GRACE 再释放显存。40 台站点大量卡片长期只显示状态点，
+        // 一直占着 960×340 的 canvas 是纯浪费。
+        card.idleMs = (card.idleMs || 0) + dt * 1000;
+        if (card.idleMs > TEX_IDLE_MS) this._dropTexture(card);
       }
+      if (tier) card.idleMs = 0;
 
       // 出卡慢慢「长出来」，收卡要利索：让位的卡别在别人卡上面赖着半透明
       card.op += (cardOp - card.op) * (cardOp > card.op ? K : KOUT);
@@ -694,7 +779,8 @@ export class ServerCards {
       card.clipOp += ((card.clipped ? 0 : 1) - card.clipOp) * K;
 
       card.sprite.material.opacity = card.op * (offline ? 0.8 : 1) * card.clipOp;
-      card.sprite.visible = card.op * card.clipOp > 0.02;
+      // 贴图被释放（长时间只显示状态点）时不能显示：没有 map 的 Sprite 会画成一块白方块
+      card.sprite.visible = !!card.tex && card.op * card.clipOp > 0.02;
       card.sprite.renderOrder = 30 + Math.max(0, 140 - Math.round(d * 4));
 
       // 收起后留一颗状态点，那只鸡头顶不至于空着
@@ -713,6 +799,8 @@ export class ServerCards {
     let full = 0;
     let compact = 0;
     let dots = 0;
+    let texCount = 0;
+    let texBytes = 0;
     for (const c of this.cards.values()) {
       if (c.sprite.visible && c.op * (c.clipOp ?? 1) > 0.5) {
         visible++;
@@ -720,7 +808,17 @@ export class ServerCards {
         else compact++;
       }
       if (c.dot.visible && (c.dotEff ?? c.dotOp) > 0.5) dots++;
+      // 贴图占用（验收用）：卡面是按需分配的，数量应远小于 total
+      for (const t of [c.tex, c.dotTex]) {
+        const im = t?.image;
+        if (!im || !im.width) continue;
+        texCount++;
+        texBytes += im.width * im.height * 4;
+      }
     }
-    return { mode: this.mode, enabled: this.enabled, total: this.cards.size, visible, full, compact, dots, budget: this._budget || 0 };
+    return {
+      mode: this.mode, enabled: this.enabled, total: this.cards.size, visible, full, compact, dots,
+      budget: this._budget || 0, texCount, texMB: +(texBytes / 1048576).toFixed(1),
+    };
   }
 }
