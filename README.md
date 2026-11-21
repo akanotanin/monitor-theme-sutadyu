@@ -20,6 +20,27 @@
 - `Esc` 关闭面板；面板开着时 `E` 与空格都不会穿透到小镇（空格仍能按下面板里聚焦的按钮）
 - **载入动画**：首屏不是空幕布——奶油色画面里一颗像素胶囊，小鸡一趟趟把木料搬过去，房子按真实加载进度一层层砌起来（放线 → 地基 → 三段墙 → 门 → 窗 → 两段屋顶 → 烟囱），树跟着长高、野花跟着冒头；进度条做成工地上的木牌，百分比刻在它下面的小木牌上。100% 时开窗点灯、撒花、小鸡原地蹦，幕布才淡出。**进度是真实的**：boot 取配置 / 站点信息 → 主模块模块图 → 首帧渲染，每个阶段才往上走一格，等得久时最多自动蹭到 88%，绝不提前宣布完成。点小鸡会跳一下（`prefers-reduced-motion` 下不跳）。
 
+## 源码与构建
+
+仓库里放的是手写源码，`dist/` 不入库（由构建生成）：
+
+```text
+src/                     源码：原生 ES 模块 + importmap，无打包器
+├── index.html           页面与全部样式
+├── boot.js              引导：先读 /api/me 与主题设置，再动态导入主模块
+├── *.js                 小镇 / 小鸡 / 卡片 / 列表 / 详情 / 图表，每个模块都可直接读
+└── vendor/three.module.js   three.js r169（MIT，全文见 THIRD-PARTY-NOTICES.md）
+tools/build.mjs          src/ → dist/，并按 theme.json 的 version 给相对模块路径注入 ?v=
+tools/pack.sh            构建 + 打成可复现的 theme.tar.gz
+```
+
+```bash
+npm run build   # = node tools/build.mjs，产出 dist/
+npm run pack    # 构建并打包 theme.tar.gz + theme.tar.gz.sha256
+```
+
+版本号只在 `theme.json` 的 `version` 写一次：构建时同步 `<meta name="theme-version">`、入口脚本与 importmap 的 `?v=`，所以发布包的哈希可以复现（条目顺序固定、mtime 与属主归零）。
+
 ## 主题设置
 
 后台「主题 → sutadyu」里可调：

@@ -627,7 +627,7 @@
 
   /* ---------------- 载入 ---------------- */
   /* 入场：奶油色幕布上的一颗像素胶囊 —— 小鸡把木料搬过去，房子跟着进度一段段长起来，
-     100% 时开窗点灯、撒花，幕布才揭。画在 dist/src/loading.js（216×128 整数网格）。 */
+     100% 时开窗点灯、撒花，幕布才揭。画在 src/loading.js（216×128 整数网格）。 */
   #loading {
     position: fixed; inset: 0; z-index: 40;
     display: grid; place-items: center;
@@ -776,8 +776,8 @@
   </div>
 
   <script type="importmap">
-    { "imports": { "three": "./vendor/three.module.js?v=1.8.17" } }
+    { "imports": { "three": "./vendor/three.module.js" } }
   </script>
-  <script type="module" src="./boot.js?v=1.8.17"></script>
+  <script type="module" src="./boot.js"></script>
 </body>
 </html>

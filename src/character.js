@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MeshBatch } from './util.js?v=1.8.17';
+import { MeshBatch } from './util.js';
 
 /* ------------------------------------------------------------------ *
  * 方块小人：总高约 2.2，头大、四肢短

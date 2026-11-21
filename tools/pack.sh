@@ -11,6 +11,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# 先构建：src/ → dist/（版本号只在 theme.json 写一次，?v= 由构建注入）
+node tools/build.mjs
+
 OUT="${1:-$PWD}"
 mkdir -p "$OUT"
 OUT=$(cd "$OUT" && pwd)

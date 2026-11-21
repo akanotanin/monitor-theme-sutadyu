@@ -1,0 +1,5 @@
+# 构建产物：由 `node tools/build.mjs` 从 src/ 生成（版本号与 ?v= 在这里注入）
+dist/
+# 打包产物
+theme.tar.gz
+theme.tar.gz.sha256

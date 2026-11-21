@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { MeshBatch } from './util.js?v=1.8.17';
-import { addRectCollider } from './collision.js?v=1.8.17';
+import { MeshBatch } from './util.js';
+import { addRectCollider } from './collision.js';
 
 /* ------------------------------------------------------------------ *
  * 建筑与家具：比例、层级、配色统一在一套小镇风格里

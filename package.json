@@ -1,0 +1,17 @@
+{
+  "name": "monitor-theme-sutadyu",
+  "version": "1.8.18",
+  "private": true,
+  "type": "module",
+  "description": "Monitor theme: a cozy 3D voxel town where every server is a chicken",
+  "license": "MIT",
+  "author": "akanotanin",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/akanotanin/monitor-theme-sutadyu.git"
+  },
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "pack": "bash tools/pack.sh"
+  }
+}
