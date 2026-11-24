@@ -8,9 +8,13 @@ import { addRectCollider } from './collision.js';
 
 const FOUNDATION = 0x97836a;
 
-/** 假阴影（贴地的一层深色，代替 AO，让物件“落”在地上） */
+/** 假阴影（贴地的一层深色，代替 AO，让物件“落”在地上）
+ *  ★所有 blob 原来都用同一个 y=0.052：相邻物件的影子一旦重叠，两个上表面严格共面
+ *    → z-fighting。这里按坐标算一个 0~4mm 的确定性偏移，让重叠的影子错开层次，
+ *    高差小到看不见，但足以消除共面。 */
 function blob(batch, x, z, w, d) {
-  batch.addBox(x + 0.2, 0.052, z + 0.25, w + 0.85, 0.025, d + 0.85, 0x314d46);
+  const jitter = ((Math.abs(x * 13.7 + z * 7.3) % 1) * 0.004);
+  batch.addBox(x + 0.2, 0.052 + jitter, z + 0.25, w + 0.85, 0.025, d + 0.85, 0x314d46);
 }
 
 function addWindow(batch, glassBatch, x, y, z, shutter, scale, style = 0) {
@@ -43,13 +47,13 @@ function addSideWindow(batch, glassBatch, x, y, z, shutter) {
 }
 
 /** 烟囱 + 三团飘烟 */
-function addChimney(batch, x, z, roofTop, px, py, pz) {
+function addChimney(batch, x, z, roofTop) {
   batch.addBox(x, roofTop - 0.32, z, 0.65, 2.05, 0.65, 0x9b6854);
   for (let i = 0; i < 4; i++) {
     batch.addBox(x, roofTop - 1.07 + i * 0.43, z + 0.34, 0.7, 0.08, 0.05, 0xc28b6a);
   }
   batch.addBox(x, roofTop + 0.74, z, 0.82, 0.2, 0.82, 0x745447);
-  void px; void py; void pz;
+  // 烟由 fx.buildSmoke 画（烟囱口的坐标从 buildHouse 的返回值交出去）
 }
 
 /**
@@ -131,6 +135,10 @@ export function buildHouse(batch, glass, cfg) {
   // ---- 烟囱 ----
   const chimneyX = x + width * 0.28;
   const chimneyZ = z - depth * 0.2;
+  // ★这里把烟囱口的三维坐标交出去：addChimney 原本收了 px/py/pz 却直接 void 掉，
+  //   注释写着「三团飘烟」但从来没画。现在由 fx.buildSmoke 接住往上冒。
+  const chimneyTopY = roofTop + 0.84;
+  const chimney = { x: chimneyX, y: chimneyTopY, z: chimneyZ };
   addChimney(batch, chimneyX, chimneyZ, roofTop);
 
   // ---- 雨棚（面包房）----
@@ -175,7 +183,39 @@ export function buildHouse(batch, glass, cfg) {
   }
 
   addRectCollider(x, z, width + 0.5, depth + 0.5);
-  return { roofTop };
+
+  /* ---- 店招 ----
+     牌子挂在门楣上方、雨棚之下：面包房有雨棚，其余三栋没有，所以高度分两档，
+     免得招牌插进雨棚或压在门框横梁上。牌面用 canvas 纹理（makeTextTexture），
+     不是几何刻字——体素字模在 45° 俯视下会糊成一团。 */
+  let signFace = null;
+  if (cfg.sign) {
+    const hasAwning = !!awning;
+    // ★招牌必须「读得出来」：第一版做成 1.62×0.66 的板 + 1.46×0.52 的牌面，
+    //   在标准视高档下不到 40px 宽、字糊成一团（视觉复核原话「无法辨认」）。
+    //   体素小镇里招牌是信息，不是装饰——放大到 2.05×0.86、牌面 1.86×0.68，
+    //   并把底色压深、字提亮，拉开对比。
+    const signY = hasAwning ? 2.32 : 2.26;
+    const signZ = front + (hasAwning ? 0.32 : 0.23);
+    // 木底板 + 铜色描边
+    batch.addBox(x, signY, signZ, 2.05, 0.86, 0.13, 0x53381f);
+    batch.addBox(x, signY + 0.46, signZ, 2.15, 0.10, 0.16, 0xb8894f);
+    batch.addBox(x, signY - 0.46, signZ, 2.15, 0.10, 0.16, 0xb8894f);
+    // 两侧吊钩，让牌「挂」在墙上而不是浮着
+    for (const s of [-1, 1]) batch.addBox(x + s * 0.82, signY + 0.56, signZ - 0.02, 0.08, 0.34, 0.08, 0x4a3320);
+    // 牌面：单独一个 mesh，走 canvas 纹理
+    const tex = makeTextTexture(cfg.sign, 0x3d2817, 0xffefc4, { tight: true });
+    const face = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.86, 0.68),
+      new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, transparent: false })
+    );
+    face.position.set(x, signY, signZ + 0.08);
+    face.name = 'house-sign';
+    face.userData.signText = cfg.sign;
+    signFace = face;
+  }
+
+  return { roofTop, signFace, chimney };
 }
 
 /* ------------------------------------------------------------------ *
@@ -222,7 +262,7 @@ export function buildFountain(batch, waterBatch, x, z, ripples) {
  * 告示牌（带 canvas 文字）
  * ------------------------------------------------------------------ */
 
-function makeTextTexture(text, bg = 0x6f4934, fg = 0xffe0a0) {
+function makeTextTexture(text, bg = 0x6f4934, fg = 0xffe0a0, opts = {}) {
   const canvas = document.createElement('canvas');
   canvas.width = 512;
   canvas.height = 192;
@@ -230,14 +270,20 @@ function makeTextTexture(text, bg = 0x6f4934, fg = 0xffe0a0) {
   const toCss = (n) => '#' + n.toString(16).padStart(6, '0');
   ctx.fillStyle = toCss(bg);
   ctx.fillRect(0, 0, 512, 192);
+  // ★描边与字号都要按「实际显示像素」定：牌面在标准档下约 70px 宽，
+  //   10px 描边 + 96px 字会让四个字挤在中间发糊。招牌文字留出更小边距、加粗。
+  const inset = opts.tight ? 7 : 14;
   ctx.strokeStyle = toCss(fg);
-  ctx.lineWidth = 10;
-  ctx.strokeRect(14, 14, 484, 164);
+  ctx.lineWidth = opts.tight ? 6 : 10;
+  ctx.strokeRect(inset, inset, 512 - inset * 2, 192 - inset * 2);
   ctx.fillStyle = toCss(fg);
-  ctx.font = 'bold 96px "Microsoft YaHei", "PingFang SC", sans-serif';
+  // 字宽随字数自适应：四个字用 104px，五个字降到 88px，避免贴边
+  const n = [...String(text)].length;
+  const size = opts.tight ? Math.min(112, Math.floor(430 / Math.max(1, n)) + 40) : 96;
+  ctx.font = `bold ${size}px "Microsoft YaHei", "PingFang SC", sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(text, 256, 101);
+  ctx.fillText(text, 256, 99);
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;

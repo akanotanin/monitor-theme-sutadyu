@@ -44,10 +44,97 @@ export const CHICKEN_SLOTS = [
   { x: 23.25, z: 0, r: 1.4 },     // 东边林间（1.8.7 重铺后原 25.2/2.6 落在树里）
 ];
 
+/* ------------------------------------------------------------------ *
+ * 按 group 分街（40 台以上才真正用得上）
+ *
+ * 每台机器在 hub 里可以挂一个 group（如「港区」「欧洲」「家宽」）。原来这个字段被
+ * 并进 role 当备注文案用掉了，等于结构信息丢掉——几十台机器全按「谁先到谁先占位」
+ * 撒在图上，访客没法从空间上读出「这几台是一组的」。
+ *
+ * 现在：**一组机器占一条横向街道**，组内沿街均分。同组的鸡挨着，不同组分带。
+ * 组数超过 5 个时超出部分并到最短的那条街上（地图横向只有这么宽，再分就挤成一团）。
+ * ------------------------------------------------------------------ */
+
+/**
+ * @param {Array<{group:string}>} servers 已按「首次出现顺序」排好的服务器
+ * @returns {Array<{x:number,z:number,gen:boolean,group:string}|null>}
+ *   下标即槽位号；null 表示这条再也塞不下（调用方回落）
+ */
+export function buildStreetSlots(servers) {
+  const groups = [];
+  const byGroup = new Map();
+  for (const s of servers) {
+    const g = (s.group && String(s.group).trim()) || '';
+    if (!byGroup.has(g)) { byGroup.set(g, []); groups.push(g); }
+    byGroup.get(g).push(s);
+  }
+  // 组太多时把尾巴并进最短的一条街
+  const MAX_BANDS = 5;
+  let order = groups.slice().sort((a, b) => byGroup.get(b).length - byGroup.get(a).length);
+  if (order.length > MAX_BANDS) {
+    const keep = order.slice(0, MAX_BANDS);
+    const tail = order.slice(MAX_BANDS);
+    for (const g of tail) {
+      const shortest = keep.reduce((a, b) => (byGroup.get(b).length < byGroup.get(a).length ? b : a), keep[0]);
+      byGroup.set(shortest, byGroup.get(shortest).concat(byGroup.get(g)));
+    }
+    order = keep;
+  }
+
+  const slots = [];
+  const bands = order.length;
+  const x0 = MAP.x1 + 1.6;
+  const x1 = MAP.x2 - 1.6;
+  const zTop = MAP.z1 + 2.2;
+  const zBottom = MAP.z2 - 2.2;
+
+  order.forEach((g, b) => {
+    const list = byGroup.get(g);
+    const n = list.length;
+    const t = bands === 1 ? 0.5 : b / (bands - 1);
+    const baseZ = zTop + (zBottom - zTop) * t;
+    // 街道沿 x 均分；机器多到挤不下就拆成多行（行间 z 偏移）
+    const span = x1 - x0;
+    /* ★原来写的是 Math.min(a, Math.max(1.5, a)) —— 对任意 a 都等于 a，
+       是彻底的恒等式，「最小间距 1.5」从未生效：40 台时 step=1.33、60 台时 0.88，
+       鸡会叠成一坨。这里改成真正的下限，并在放不下时按行数拆分。 */
+    const MIN_STEP = 1.5;
+    let rows = 1;
+    while (rows < 12 && span / Math.max(1, Math.ceil(n / rows) - 1) < MIN_STEP) rows++;
+    const perRow = Math.ceil(n / rows);
+    const step = perRow > 1 ? Math.max(MIN_STEP, span / (perRow - 1)) : 0;
+    const rowGap = 1.55;   // 行距略大于最小间距，避免多行之间又挤在一起
+    const totalW = step * (perRow - 1);
+    const startX = x0 + (span - totalW) / 2;
+    for (let i = 0; i < n; i++) {
+      const row = Math.floor(i / perRow);
+      const col = i % perRow;
+      let x = perRow === 1 ? (x0 + x1) / 2 : startX + step * col;
+      let z = baseZ + (row - (rows - 1) / 2) * rowGap;
+      // 撞河/撞建筑就沿街往两侧挪，别把鸡塞进墙里
+      let ok = false;
+      for (let k = 0; k < 12 && !ok; k++) {
+        const probeX = x + (k % 2 ? 1 : -1) * Math.floor((k + 1) / 2) * 0.55;
+        const probeZ = z + (k % 4 >= 2 ? 0.7 : -0.7);
+        if (isWalkable(probeX, probeZ, 0.85)) { x = probeX; z = probeZ; ok = true; }
+      }
+      if (!ok) { slots.push(null); continue; }   // 这条街这个位置实在站不下
+      slots.push({ x, z, gen: true, group: g, id: list[i].id });
+    }
+  });
+  return slots;
+}
+
+/** 每个槽位属于哪条街（验收用：算组内/组间距离） */
+export function slotGroupOf(slot) {
+  return slot && slot.group !== undefined ? slot.group : null;
+}
+
 /**
  * 按服务器数量备好落脚点：前 10 个是手工点位；超出的在**整张地图**里做
  * 「最远点采样」——每只新鸡都落在离已有全部点位最远的候选点上，
  * 天然铺满全图、不会挤成一圈（数量少时也一样散得开）。
+ * 没有 group（或只有一组）时走这条；见 buildStreetSlots 的分街版本。
  */
 export function buildSlots(count) {
   const slots = CHICKEN_SLOTS.slice(0, Math.min(count, CHICKEN_SLOTS.length));
@@ -234,7 +321,36 @@ export class ChickenHerd {
    * 所以记住「已经按多少台试过」——否则机器数 > 产出数时，sync() 的
    * `this._slots.length < servers.length` 恒真，每帧都会重跑一次整表（32 s 级冻结）。
    */
+  /**
+   * 有 2 个以上 group 时排一次街道；组签名没变就沿用上次方案。
+   * ★不能在每次推送都重算并重排已有的鸡：WS 每 2 秒推一帧，重排会让整群鸡
+   *   在两秒一次地跳位置。所以方案只用于**新来的**鸡，已经落地的保留原位。
+   */
+  _planStreetSlots(servers) {
+    const sig = servers.map((s) => (s.group && String(s.group).trim()) || '').join('|');
+    if (this._slotSig === sig) return;
+    this._slotSig = sig;
+    const groups = new Set(sig.split('|').filter(Boolean));
+    if (groups.size < 2) {
+      this._slotPlan = null;
+      if (this._slots) { this._slots = null; this._slotsFor = 0; }   // 回到原来的采样布局
+      return;
+    }
+    const slots = buildStreetSlots(servers);
+    const plan = new Map();
+    slots.forEach((slot, idx) => {
+      if (slot && slot.id !== undefined) plan.set(slot.id, idx);
+    });
+    this._slotPlan = plan;
+    this._streetSlots = slots;
+    // 用街道槽位表替换原来的采样表，_spawn 会直接按 index 取这里的坐标
+    this._slots = slots;
+    this._slotsFor = slots.length;
+  }
+
   _ensureSlots(n) {
+    // 分街模式下 _slots 是街道表，别被采样表顶掉（组签名变了时 _planStreetSlots 会重置）
+    if (this._slotPlan && this._slots && this._slots.length) return this._slots;
     const want = Math.max(n, CHICKEN_SLOTS.length);
     if (!this._slots || want > this._slotsFor) {
       this._slots = buildSlots(want);
@@ -260,13 +376,19 @@ export class ChickenHerd {
     // 槽位表一次建够：只靠 _takeSlot 里的按需重建，首帧会跑 buildSlots(10)+buildSlots(11)+…+buildSlots(N)，
     // 成本 O(N²)（实测 100 台 0.5 s、200 台 3.3 s 主线程冻结，且全部发生在首帧之前）。
     // buildSlots 的前缀是稳定的，一次建到 N 与逐个追加得到的前 N 个点位完全相同。
+    this._planStreetSlots(servers);
     this._ensureSlots(servers.length);
     const seen = new Set();
     servers.forEach((server) => {
       seen.add(server.id);
       let item = this._byId.get(server.id);
       if (!item) {
-        const slotIndex = this._takeSlot();
+        // 分街方案里给了这块地就用它，否则按原来的顺序领一个空位
+        const planned = this._slotPlan ? this._slotPlan.get(server.id) : undefined;
+        const want = planned !== undefined && !this._usedSlots.has(planned) ? planned : undefined;
+        const slotIndex = want !== undefined
+          ? (this._usedSlots.add(want), want)
+          : this._takeSlot();
         item = this._spawn(server, slotIndex);
         item.slotIndex = slotIndex;
         this._byId.set(server.id, item);
@@ -284,6 +406,17 @@ export class ChickenHerd {
       const i = this.items.indexOf(item);
       if (i >= 0) this.items.splice(i, 1);
       this.group.remove(item.root);
+      /* ★必须显式释放：buildChicken 是每只鸡现建几何与材质的
+         （body/wing/leg/head/ring/shadow 六份 geometry + ringMat + shadow 材质），
+         只从 scene 上摘下来并不会回收显存，机器增删久了就会稳定泄漏。
+         共享材质（this.material 那批）不能动，只清这只鸡独有的。 */
+      item.root.traverse((o) => {
+        if (!o.isMesh) return;
+        o.geometry?.dispose?.();
+        const m = o.material;
+        if (m && m !== this.material) m.dispose?.();
+      });
+      item.ring?.material?.dispose?.();
       const j = this.interactables.indexOf(item.interactable);
       if (j >= 0) this.interactables.splice(j, 1);
     }
@@ -291,7 +424,8 @@ export class ChickenHerd {
 
   _spawn(server, index) {
     const slots = this._slots && this._slots.length ? this._slots : CHICKEN_SLOTS;
-    const slot = slots[index % slots.length];
+    // 街道表里可能有 null（那个位置撞河/撞墙实在站不下），退回手工点位别崩
+    const slot = slots[index % slots.length] || CHICKEN_SLOTS[index % CHICKEN_SLOTS.length];
     let x;
     let z;
     if (slot.gen) {
@@ -316,7 +450,10 @@ export class ChickenHerd {
       z = slot.z;
     }
 
-    const body = buildChicken(this.material, index, 1.02 + ((index * 7) % 3) * 0.04);
+    // ★体型：1.02~1.10 → 1.16~1.24。实测在标准视高下小鸡只有约 28px 高，
+    //   而它是这套主题的**唯一数据载体**（一台机器一只鸡），太小就找不到。
+    //   放大后在玩家(约 2.0 世界单位)旁边仍像一只鸡，不至于变成怪物。
+    const body = buildChicken(this.material, index, 1.16 + ((index * 7) % 3) * 0.04);
     body.root.position.set(x, 0, z);
     body.root.rotation.y = this._rand() * Math.PI * 2;
     // 鼠标射线沿父链找这个标记（main.js 的 updateHover）——没有它悬停/点击整条链路都是空的

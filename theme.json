@@ -2,7 +2,7 @@
   "name": "sutadyu",
   "short": "sutadyu",
   "description": "星露谷式小镇探针主题：每台服务器一只小鸡；Tab 打开探针列表，点卡片看九格信息与资源/延迟折线图。",
-  "version": "1.8.19",
+  "version": "1.12.0",
   "author": "akanotanin",
   "url": "https://github.com/akanotanin/monitor-theme-sutadyu",
   "config": [
@@ -55,6 +55,31 @@
         }
       ],
       "help": "小鸡头顶信息卡：智能档在宽屏上每只鸡常驻挂卡（状态/延迟/CPU/内存/磁盘/流量已用÷总量/实时带宽↓↑），窄屏（<700px）自动收成「靠近才展开」；走近或悬停会展开更完整的一张（含今日流量与公开备注）。"
+    },
+    {
+      "type": "select",
+      "key": "daylight",
+      "label": "一天里的光",
+      "default": "auto",
+      "options": [
+        {
+          "value": "auto",
+          "label": "跟随访客本地时间"
+        },
+        {
+          "value": "day",
+          "label": "固定白天"
+        },
+        {
+          "value": "dusk",
+          "label": "固定黄昏"
+        },
+        {
+          "value": "night",
+          "label": "固定夜里"
+        }
+      ],
+      "help": "按访客电脑的本地时间做晨昏渐变：太阳方位随时间偏移、色调从清晨的暖黄到黄昏的橘红再到夜里的冷蓝，路灯到点才亮。选「跟随本地时间」时访客那边几点就是小镇几点。"
     },
     {
       "type": "boolean",

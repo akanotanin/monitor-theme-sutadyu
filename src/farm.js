@@ -148,6 +148,32 @@ export function buildFarm(voxelMaterial, unlitMaterial, rng, interactables) {
     });
   });
 
+  /* ---- 作物重生的节律：由「这台机器在线多久」决定 ----
+     ★原来摘完就 `mature=false` 永久荒着，只有刷新页面才回来。
+       现在一次采摘会种下新一轮：**机器在线越久，田越肥沃、长得越快**。
+       30 天以上 → 40 秒；刚开机 → 150 秒；离线节点按 0 天算（最慢）。
+       这样「在线时长」这个本来只在详情页里的数字，变成了看得见的种地反馈。 */
+  const REGROW_FAST_DAYS = 30;
+  const REGROW_MIN_SEC = 40;
+  const REGROW_MAX_SEC = 150;
+  function regrowSeconds(server) {
+    const days = server && Number.isFinite(server.uptimeSec) ? server.uptimeSec / 86400 : 0;
+    const t = Math.max(0, Math.min(1, days / REGROW_FAST_DAYS));
+    return REGROW_MAX_SEC - (REGROW_MAX_SEC - REGROW_MIN_SEC) * t;
+  }
+
+  /** 长成了：把产物显回来、嫩芽收掉、土色补丁抹平 */
+  function becomeMature(crop) {
+    crop.mature = true;
+    crop.regrowAt = 0;
+    crop.regrowMs = 0;
+    crop.produce.visible = true;
+    crop.produce.scale.setScalar(crop.baseScale);
+    crop.sprout.visible = false;
+    crop.sprout.scale.y = 1;
+    crop.patch.visible = false;
+  }
+
   for (const p of places) {
     const root = new THREE.Group();
     root.position.set(p.x, 0.12, p.z);
@@ -185,6 +211,12 @@ export function buildFarm(voxelMaterial, unlitMaterial, rng, interactables) {
       mature: p.mature,
       phase: rng() * 6.28,
       harvested: false,
+      baseScale: p.mature ? s : 0.7,
+      // 重生用：归属哪台机器（slots 模块按顺序分配）、何时长好、总时长
+      slotIndex: crops.length,
+      regrowAt: 0,
+      regrowMs: 0,
+      server: null,
     };
     crops.push(crop);
 
@@ -197,16 +229,37 @@ export function buildFarm(voxelMaterial, unlitMaterial, rng, interactables) {
         available: () => crop.mature,
         interact: () => {
           if (!crop.mature) return null;
+          const sec = regrowSeconds(crop.server);
           crop.mature = false;
           crop.produce.visible = false;
           crop.sprout.visible = true;
           crop.patch.visible = true;
           crop.harvested = true;
+          crop.regrowMs = sec * 1000;
+          crop.regrowAt = performance.now() + crop.regrowMs;
+          crop.sprout.scale.y = 0.35;
           harvestCount++;
+          // 归到的那台机器在线越久，这一轮长得越快——把 uptime 变成看得见的种地反馈
+          const owner = crop.server && crop.server.name ? crop.server.name : null;
+          /* ★只有当 uptime 是有限值时才能说「连轴转了 N 天」。
+             原来写 (uptimeSec || 0)/86400 再 Math.max(1, …)：离线节点或没有 metrics
+             的机器 uptimeSec 为 null，除法得 0，被兜成「1 天」——一句话凭空
+             给机器编了 1 天在线时长，而同一份数据算重生时长时是按 0 天算的 150 秒，
+             两处自相矛盾。这里与 regrowSeconds() 同口径：拿不到就不说天数。 */
+          const days = Number.isFinite(crop.server?.uptimeSec)
+            ? Math.max(1, Math.round(crop.server.uptimeSec / 86400))
+            : 0;
+          const why = owner && days > 0
+            ? `${owner} 已经连轴转了 ${days} 天，田里的土正肥`
+            : '土还松着，过一会儿又会冒芽';
           return {
             kind: 'toast',
             text: `采到了 1 份${crop.name} · 竹篮里已有 ${harvestCount} 份收成`,
-            extra: { kind: 'say', name: '丰收时刻', text: `${crop.name}还带着阳光的温度。把这份小小的丰收放进竹篮吧！` },
+            extra: {
+              kind: 'say',
+              name: '丰收时刻',
+              text: `${crop.name}还带着阳光的温度。${why}，约 ${Math.round(sec)} 秒后又能摘一轮。`,
+            },
           };
         },
         ref: crop,
@@ -218,10 +271,42 @@ export function buildFarm(voxelMaterial, unlitMaterial, rng, interactables) {
     group,
     crops,
     get harvestCount() { return harvestCount; },
+    /** 每块地现在的状态（验收/调试用） */
+    snapshot() {
+      return crops.map((c) => ({
+        name: c.name,
+        mature: !!c.mature,
+        harvested: !!c.harvested,
+        server: c.server ? c.server.name : null,
+        leftMs: c.regrowAt ? Math.max(0, Math.round(c.regrowAt - performance.now())) : 0,
+      }));
+    },
+    /** 把节点列表绑到作物上：第 i 株归第 i 台机器（没有的就不绑，按最慢算） */
+    bindServers(servers) {
+      const list = Array.isArray(servers) ? servers : [];
+      for (const crop of crops) {
+        crop.server = list.length ? list[crop.slotIndex % list.length] : null;
+      }
+    },
     update(time) {
+      const now = performance.now();
       for (const crop of crops) {
         if (crop.mature) {
           crop.produce.rotation.z = Math.sin(time * 1.3 + crop.phase) * 0.018;
+          continue;
+        }
+        // 正在长：嫩芽从 35% 长到满高，长满就换回成熟形态
+        if (crop.regrowAt > 0) {
+          const left = crop.regrowAt - now;
+          if (left <= 0) {
+            becomeMature(crop);
+            continue;
+          }
+          const p = 1 - left / Math.max(1, crop.regrowMs);   // 0→1
+          crop.sprout.scale.y = 0.35 + 0.65 * p;
+          crop.sprout.scale.x = 0.7 + 0.3 * p;
+          crop.sprout.scale.z = 0.7 + 0.3 * p;
+          crop.sprout.rotation.z = Math.sin(time * 2.1 + crop.phase) * 0.05 * (1 - p);
         }
       }
     },

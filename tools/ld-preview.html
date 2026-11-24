@@ -27,7 +27,7 @@
      *   ?p=0.55&done=1  演完 100% 的收尾
      *   ?auto=1         模拟一次真实加载：0.12 → 爬升 → done()
      */
-    import { mount } from '../dist/src/loading.js';
+    import { mount } from '../dist/loading.js';
     const api = mount();
     window.__L__ = api;
     const q = new URLSearchParams(location.search);

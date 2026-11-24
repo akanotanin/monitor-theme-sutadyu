@@ -140,11 +140,23 @@ function cardHtml(server) {
       ? `离线 ${fmtAgoSec(server.lastSeenAgo)}`
       : st.label;
   const uptimeTitle = live && server.uptimeSec !== null ? ` · 已运行 ${fmtUptime(server.uptimeSec)}` : '';
+  /* 国旗：只认「包内真的有这张图」的代码，否则退小地球。
+     ★为什么不能只校验「两个字母」：ISO 3166-1 里英国是 GB，但后台填 UK 极常见
+       （实测 UK/EU/XX 这类合法格式但无文件的代码会让 <img> 变成浏览器破图图标）。
+       这里做三件事：① 别名归一（uk→gb、en→gb 等常见误填）；
+       ② 白名单（FLAG_CODES 由 vendor/flags 目录生成的静态清单）；
+       ③ 两者都不中就输出 span，绝不产出 <img src> 空/失效路径。
+     同时 cc 参与字符串拼接，必须自己过白名单——不依赖 hub.js 的正则（纵深防御）。 */
+  const ccRaw = String(server.country || '').toLowerCase();
+  const cc = FLAG_ALIAS[ccRaw] || ccRaw;
+  const flag = FLAG_CODES.has(cc)
+    ? `<img class="pc-fl" src="./vendor/flags/${cc}.png" alt="${escapeHtml(cc.toUpperCase())}" loading="lazy" decoding="async">`
+    : `<span class="pc-fl emoji" aria-hidden="true">🌐</span>`;
   return `
     <button class="pp-card${server.status === 'offline' ? ' is-off' : ''}" type="button" data-id="${escapeHtml(server.id)}"
       title="点开 ${escapeHtml(server.name)} 的详情${escapeHtml(uptimeTitle)}">
       <div class="pc-head">
-        <span class="pc-dot" style="background:${st.css}"></span>
+        ${flag}
         <span class="pc-name">${escapeHtml(server.name)}</span>
         <span class="pc-badge" style="--c:${st.css}">${escapeHtml(stateText)}</span>
       </div>
@@ -166,6 +178,41 @@ function carrierBlock(server, live) {
   if (!live) return '';
   return `<div class="pc-carriers"><span class="pc-carrier dim">三网数据加载中…</span></div>`;
 }
+
+/* ------------------------------------------------------------------ *
+ * 国旗白名单
+ *
+ * ★为什么要有这个东西：`country` 是后台自由填写的字段，格式合法（两个字母）
+ *   不等于包内真有这张图。实测 UK / EU / XX 这类「合法但无文件」的代码
+ *   会让 <img> 直接变成浏览器破图图标——比不显示国旗更难看。
+ *   所以渲染前先查这张静态清单（250 面，与 vendor/flags 目录一一对应），
+ *   不在表里就退成小地球。新增国旗时把文件名加进 SET 即可。
+ *
+ * ★这张表同时是 CC 的白名单：cc 要拼进 src="..."，不能让任意字符串进去。
+ * ------------------------------------------------------------------ */
+
+const FLAG_CODES = new Set([
+  'ad', 'ae', 'af', 'ag', 'ai', 'al', 'am', 'ao', 'aq', 'ar', 'as', 'at', 'au', 'aw', 'ax', 'az', 'ba', 'bb', 'bd', 'be',
+  'bf', 'bg', 'bh', 'bi', 'bj', 'bl', 'bm', 'bn', 'bo', 'bq', 'br', 'bs', 'bt', 'bv', 'bw', 'by', 'bz', 'ca', 'cc', 'cd',
+  'cf', 'cg', 'ch', 'ci', 'ck', 'cl', 'cm', 'cn', 'co', 'cr', 'cu', 'cv', 'cw', 'cx', 'cy', 'cz', 'de', 'dj', 'dk', 'dm',
+  'do', 'dz', 'ec', 'ee', 'eg', 'eh', 'er', 'es', 'et', 'fi', 'fj', 'fk', 'fm', 'fo', 'fr', 'ga', 'gb', 'gd', 'ge', 'gf',
+  'gg', 'gh', 'gi', 'gl', 'gm', 'gn', 'gp', 'gq', 'gr', 'gs', 'gt', 'gu', 'gw', 'gy', 'hk', 'hm', 'hn', 'hr', 'ht', 'hu',
+  'id', 'ie', 'il', 'im', 'in', 'io', 'iq', 'ir', 'is', 'it', 'je', 'jm', 'jo', 'jp', 'ke', 'kg', 'kh', 'ki', 'km', 'kn',
+  'kp', 'kr', 'kw', 'ky', 'kz', 'la', 'lb', 'lc', 'li', 'lk', 'lr', 'ls', 'lt', 'lu', 'lv', 'ly', 'ma', 'mc', 'md', 'me',
+  'mf', 'mg', 'mh', 'mk', 'ml', 'mm', 'mn', 'mo', 'mp', 'mq', 'mr', 'ms', 'mt', 'mu', 'mv', 'mw', 'mx', 'my', 'mz', 'na',
+  'nc', 'ne', 'nf', 'ng', 'ni', 'nl', 'no', 'np', 'nr', 'nu', 'nz', 'om', 'pa', 'pe', 'pf', 'pg', 'ph', 'pk', 'pl', 'pm',
+  'pn', 'pr', 'ps', 'pt', 'pw', 'py', 'qa', 're', 'ro', 'rs', 'ru', 'rw', 'sa', 'sb', 'sc', 'sd', 'se', 'sg', 'sh', 'si',
+  'sj', 'sk', 'sl', 'sm', 'sn', 'so', 'sr', 'ss', 'st', 'sv', 'sx', 'sy', 'sz', 'tc', 'td', 'tf', 'tg', 'th', 'tj', 'tk',
+  'tl', 'tm', 'tn', 'to', 'tr', 'tt', 'tv', 'tw', 'tz', 'ua', 'ug', 'um', 'us', 'uy', 'uz', 'va', 'vc', 've', 'vg', 'vi',
+  'vn', 'vu', 'wf', 'ws', 'xk', 'ye', 'yt', 'za', 'zm', 'zw',
+]);
+
+/* 常见误填 → 真实 ISO 代码。后台填 UK 的人远多于填 GB。 */
+const FLAG_ALIAS = {
+  uk: 'gb',
+  en: 'gb',      // England 的常见误填
+  el: 'gr',      // 希腊的旧代码 EL 常被沿用
+};
 
 /* ------------------------------------------------------------------ *
  * 详情页

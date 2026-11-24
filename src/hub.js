@@ -99,7 +99,13 @@ export function normalize(node, index) {
     id: `node-${node.id ?? index}`,
     nodeId: node.id ?? index,
     name: node.name || `节点 ${node.id ?? index + 1}`,
+    // 国旗：hub 的 /api/nodes 带 country（ISO 3166-1 alpha-2，如 "JP"）。
+    // 小写存，卡片直接拿它拼 vendor/flags/<cc>.png；没有或不合法就退成文字代码。
+    country: /^[A-Za-z]{2}$/.test(String(node.country || '')) ? String(node.country).toLowerCase() : '',
     role: node.public_remark || node.group || '',
+    // ★group 单独留一份：role 是给访客看的备注文案，group 是「哪一组机器」这个结构信息，
+    //   两者混用会让分区街道没法做（1.8.x 起一直是 role 吞掉 group）。
+    group: node.group || '',
     status: pickStatus(node, memPct),
     hasMetrics: !!node.metrics,
     cpu: num(m.cpu),

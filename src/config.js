@@ -66,22 +66,22 @@ export const HOUSES = [
   {
     id: 'blue', name: '蓝顶小屋', x: P(1.3), z: P(-7.4), width: 4.1, depth: 3.7,
     wall: '#f0d6a4', roof: '#62899b', roofAlt: '#7ca2ae', trim: '#72533e',
-    door: '#b46952', shutter: '#d08368', roofLayers: 5, roofRise: 0.38, dormer: true, windowStyle: 2,
+    door: '#b46952', shutter: '#d08368', roofLayers: 5, roofRise: 0.38, dormer: true, windowStyle: 2, sign: '蓝顶小馆',
   },
   {
     id: 'teal', name: '青瓦人家', x: P(-10), z: P(4.8), width: 4.2, depth: 4,
     wall: '#e6a99b', roof: '#5f8c7d', roofAlt: '#7ba291', trim: '#76513d',
-    door: '#876493', shutter: '#f0cf91', roofLayers: 7, roofRise: 0.22, gable: true,
+    door: '#876493', shutter: '#f0cf91', roofLayers: 7, roofRise: 0.22, gable: true, sign: '青瓦茶寮',
   },
   {
     id: 'orange', name: '橙顶农舍', x: P(4.4), z: P(8.8), width: 4.2, depth: 3.6,
     wall: '#b9c795', roof: '#c17b4f', roofAlt: '#da9863', trim: '#6e533c',
-    door: '#65859b', shutter: '#8b9e6b', roofLayers: 5, roofRise: 0.34, windowStyle: 1,
+    door: '#65859b', shutter: '#8b9e6b', roofLayers: 5, roofRise: 0.34, windowStyle: 1, sign: '橙顶果蔬',
   },
   {
     id: 'cabin', name: '紫顶木屋', x: P(16.3), z: P(-7), width: 3.8, depth: 3.6,
     wall: '#d8b586', roof: '#7d6a91', roofAlt: '#9980a5', trim: '#674d3c',
-    door: '#9c5f49', shutter: '#8c9d72', roofLayers: 4, roofRise: 0.24, cabin: true, windowStyle: 2,
+    door: '#9c5f49', shutter: '#8c9d72', roofLayers: 4, roofRise: 0.24, cabin: true, windowStyle: 2, sign: '紫顶工坊',
   },
 ];
 

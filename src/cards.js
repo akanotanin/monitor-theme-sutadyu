@@ -34,6 +34,9 @@ const NOTCH_H = 14;             // 底部指针高
 const W_COMPACT = 6.0;          // 紧凑卡世界宽
 const W_FULL = 6.4;             // 展开卡世界宽
 const DOT_WORLD = 0.72;         // 状态点世界尺寸
+/* 状态点的透明命中盒：圆点本身只有约 14px（手机），按不准。
+   放大到 2.2 倍 ≈ 32px 直径的命中圈，视觉不变、手指好按。 */
+const DOT_HIT = DOT_WORLD * 2.2;
 const CARD_MIN_GAP = 6.6;       // 两张完整卡之间的距离下限：必须 ≥ 卡宽（6.0），否则「防叠」本身就是个摆设
 const KEEP_GAP = 7.1;           // 已在出卡的「保留间距」：比 CARD_MIN_GAP 宽一档，走位时卡不来回跳
 const FADE_RATE = 3.4;          // 透明度/尺寸过渡速率（越小越润；约 0.9s 到位）
@@ -120,8 +123,9 @@ function cardPath(bodyH) {
   return p;
 }
 
-/** 纸卡底：先画一层错位的软影子，再描边+填充 */
-function paintFrame(ctx, bodyH) {
+/** 纸卡底：先画一层错位的软影子，再描边+填充
+ *  第 3 个参数用于在左侧压一条状态色带：不读字也能一眼扫出哪台不在线。 */
+function paintFrame(ctx, bodyH, accent) {
   const path = cardPath(bodyH);
   ctx.save();
   ctx.translate(0, 4.5);
@@ -134,6 +138,16 @@ function paintFrame(ctx, bodyH) {
   ctx.stroke(path);
   ctx.fillStyle = COL_BG;
   ctx.fill(path);
+  // 左侧状态色带：贴着左边圆角内侧，宽度只占一点，不挤正文
+  if (accent) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(2, 2, 9, bodyH - 4);
+    ctx.clip();
+    ctx.fillStyle = accent;
+    ctx.fill(path);
+    ctx.restore();
+  }
 }
 
 function bar(ctx, x, y, w, h, pct, color) {
@@ -314,7 +328,7 @@ const C_BODY = 122;             // 紧凑卡主体高（不含指针）
 function drawCompact(server) {
   const { canvas, ctx } = newCanvas(C_BODY + NOTCH_H);
   const st = STATUS[server.status] || STATUS.unknown;
-  paintFrame(ctx, C_BODY);
+  paintFrame(ctx, C_BODY, st.css);
   drawHead(ctx, server, st, 30, { withLatency: true });
 
   // 第二行三格：CPU / 内存 / 磁盘
@@ -362,7 +376,7 @@ function drawFull(server) {
   const bodyH = role ? F_BODY_ROLE : F_BODY;
   const { canvas, ctx } = newCanvas(bodyH + NOTCH_H);
   const st = STATUS[server.status] || STATUS.unknown;
-  paintFrame(ctx, bodyH);
+  paintFrame(ctx, bodyH, st.css);
   drawHead(ctx, server, st, 32);
 
   metricRow(ctx, 'CPU', server.cpu, 64);
@@ -531,11 +545,13 @@ export class ServerCards {
       if (ids.has(id)) continue;
       this.group.remove(card.sprite);
       this.group.remove(card.dot);
+      if (card.pad) this.group.remove(card.pad);
       card.tex?.dispose();
       card.dotTex?.dispose();
       // 贴图之外，SpriteMaterial 也是要释放的（随机器增删累积，虽然量小但不是免费）
       card.sprite.material?.dispose();
       card.dot.material?.dispose();
+      card.pad?.material?.dispose();
       this.cards.delete(id);
     }
     for (const server of servers) {
@@ -549,12 +565,29 @@ export class ServerCards {
         const { sprite: dot, tex: dotTex } = this._makeSprite(drawDot(server));
         dot.scale.set(DOT_WORLD, DOT_WORLD, 1);
         dot.visible = false;
+        /* 状态点的「命中盒」：圆点本身只有约 14px（sprite 0.72 世界单位，
+           drawDot 的圆只占画布 23/84），远低于触屏 44px 的可点标准——手机上基本按不准。
+           这里垫一块完全透明的精灵（不画像素、只吃射线），把可点圈放大到约 38px，
+           视觉一点不变。它跟 dot 一起显隐，所以「看得见的才点得中」仍然成立。 */
+        const pad = this._makeEmptySprite();
+        pad.material.opacity = 0;          // 透明：看不见，但 raycast 仍会命中
+        pad.material.depthWrite = false;
+        pad.scale.set(DOT_HIT, DOT_HIT, 1);
+        pad.visible = false;
+        pad.renderOrder = 25;
         this.group.add(sprite);
         this.group.add(dot);
+        this.group.add(pad);
+        // 射线拾取标记：main.js 沿父链找它。Sprite 是叶子节点，父链就是自己，
+        // 所以三条都要打——没有它「点卡片开详情」整条链路是空的（与 1.8.6 小鸡那个坑同款）
+        sprite.userData.cardId = server.id;
+        dot.userData.cardId = server.id;
+        pad.userData.cardId = server.id;
+        pad.userData.hitPad = true;        // 拾取时用它做「看得见才点得中」的判据
         const aspect = (C_BODY + NOTCH_H) / DW;
         const h = W_COMPACT * aspect;
         sprite.scale.set(W_COMPACT, h, 1);
-        card = { sprite, tex: null, texTier: null, dot, dotTex, dotSig: server.status, sig: sigOf(server), tier: 'compact', op: 0, dotOp: 0, clipOp: 1, clipped: false, w: W_COMPACT, h, aspect, gap: 0.72, pending: true, idleSince: 0 };
+        card = { sprite, tex: null, texTier: null, dot, dotTex, pad, dotSig: server.status, sig: sigOf(server), tier: 'compact', op: 0, dotOp: 0, clipOp: 1, clipped: false, w: W_COMPACT, h, aspect, gap: 0.72, pending: true, idleSince: 0 };
         this.cards.set(server.id, card);
       }
       // 状态点只取决于 status：CPU 抖一下/网速换档时重画 168×168 贴图纯属浪费
@@ -723,6 +756,10 @@ export class ServerCards {
         dotOp = 1;
       } else if (this.mode === 'near') {
         if (focused || (rank === 0 && d < 9.5)) { tier = 'full'; cardOp = 1; }
+        // 非近邻的机器留一颗状态点：窄屏上「走近才展开」的结果是 9 台里有 8 台
+        // 卡片和点都没有，访客完全看不出这张图上还有别的机器（实测 0 卡 / 1 点 / 8 空）。
+        // 状态点是 0.72 世界的圆点，一颗只占总卡片面积的 1.4%，不会把窄屏堆满。
+        else dotOp = 1;
       } else {
         // 常驻：人人有卡，但同屏只留「最近且互不叠放」的一批；其余缩成状态点
         const inBudget = allowed.has(server.id);
@@ -790,6 +827,11 @@ export class ServerCards {
       card.dot.material.opacity = dotOpEff * (offline ? 0.7 : 1);
       card.dot.visible = dotOpEff > 0.02;
       card.dot.renderOrder = 60;
+      // 透明命中盒跟着状态点走：只在「点真的看得见」时才开，避免点空气弹出详情
+      if (card.pad) {
+        card.pad.position.copy(card.dot.position);
+        card.pad.visible = card.dot.visible;
+      }
     });
   }
 

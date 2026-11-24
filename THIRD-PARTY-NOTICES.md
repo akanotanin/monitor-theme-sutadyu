@@ -35,5 +35,13 @@ SOFTWARE.
 
 ---
 
-本主题自身（`dist/` 下除 `vendor/three.module.js` 之外的全部内容）采用 MIT
+## 国旗图片（`dist/vendor/flags/*.png`）
+
+250 面国旗（ISO 3166-1 alpha-2 + XK），取自 flagcdn.com（flagpedia.net）的免费国旗库。
+上游说明其图像来自 Wikimedia Commons 的公有领域国旗图；若再分发，请保留本条来源说明。
+这些图片只用于探针列表卡片上的地区标识，缺图时会退回文字代码，不会破版。
+
+---
+
+本主题自身（`dist/` 下除 `vendor/three.module.js` 与 `vendor/flags/` 之外的全部内容）采用 MIT
 许可，版权归 akanotanin，见 `LICENSE`。

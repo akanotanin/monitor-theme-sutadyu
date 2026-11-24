@@ -32,6 +32,7 @@ setTimeout(() => { try { document.body.classList.add('ld-ready'); } catch { /* �
 const DEFAULTS = {
   viewHeight: '24',
   labelMode: 'auto',
+  daylight: 'auto',
   villagers: true,
   shadows: true,
   lowQuality: false,
@@ -54,12 +55,14 @@ const asView = (v, d) => {
 };
 
 const LABEL_MODES = ['auto', 'near', 'always', 'dot'];
+const DAYLIGHT_MODES = ['auto', 'day', 'dusk', 'night'];
 
 function pickSettings(raw) {
   const s = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
   return {
     viewHeight: asView(s.viewHeight, DEFAULTS.viewHeight),
     labelMode: LABEL_MODES.includes(s.labelMode) ? s.labelMode : DEFAULTS.labelMode,
+    daylight: DAYLIGHT_MODES.includes(s.daylight) ? s.daylight : DEFAULTS.daylight,
     villagers: asBool(s.villagers, DEFAULTS.villagers),
     shadows: asBool(s.shadows, DEFAULTS.shadows),
     lowQuality: asBool(s.lowQuality, DEFAULTS.lowQuality),
@@ -97,9 +100,11 @@ async function loadConfig() {
 
 const [config, me] = await Promise.all([loadConfig(), loadMe()]);
 step(0.42);
-// 预览/验收用：?labelMode=auto|always|near|dot 直接切名牌档位（不动站点配置）
+// 预览/验收用：?labelMode=… 切名牌档位、?daylight=… 切昼夜档（都不动站点配置）
 const forcedLabel = new URLSearchParams(location.search).get('labelMode');
 if (LABEL_MODES.includes(forcedLabel)) config.labelMode = forcedLabel;
+const forcedDaylight = new URLSearchParams(location.search).get('daylight');
+if (DAYLIGHT_MODES.includes(forcedDaylight)) config.daylight = forcedDaylight;
 window.__SUTADYU_CONFIG__ = config;
 window.__SUTADYU_ME__ = {
   siteName: (me && me.site_name) || '',
